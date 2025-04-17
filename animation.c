@@ -243,169 +243,98 @@ void drawFrame(player *p, char color)
   }
 }
 
-// This thread runs on core 0
-static PT_THREAD (protothread_core_1(struct pt *pt))
-{
-    // Indicate thread beginning
-    PT_BEGIN(pt) ;
 
-    // Some variables
-    static int i ;
-    static uint32_t keypad ;
-
-    while(1) {
-
-        // gpio_put(LED, !gpio_get(LED)) ;
-
-        // Scan the keypad!
-        for (i=0; i<KEYROWS; i++) {
-            // Set a row high
-            gpio_put_masked((0xF << BASE_KEYPAD_PIN),
-                            (scancodes[i] << BASE_KEYPAD_PIN)) ;
-            // Small delay required
-            sleep_us(1) ; 
-            // Read the keycode
-            keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F) ;
-            // Break if button(s) are pressed
-            if (keypad & button) break ;
-        }
-        // If we found a button . . .
-        if (keypad & button) {
-            // Look for a valid keycode.
-            for (i=0; i<NUMKEYS; i++) {
-                if (keypad == keycodes[i]) break ;
-            }
-            // If we don't find one, report invalid keycode
-            if (i==NUMKEYS) (i = -1) ;
-        }
-        // Otherwise, indicate invalid/non-pressed buttons
-        else (i=-1) ;
-
-
-
-        // Write key to VGA
-        // if (i != prev_key) {
-        //     prev_key = i ;
-        //     fillRect(250, 20, 176, 30, RED); // red box
-        //     sprintf(keytext, "%d", i) ;
-        //     setCursor(250, 20) ;
-        //     setTextSize(2) ;
-        //     writeString(keytext) ;
-        // }
-
-        // Print key to terminal
-        tracked_key=i;
-        printf("\n%d", i) ;
-
-        PT_YIELD_usec(30000) ;
-    }
-    // Indicate thread end
-    PT_END(pt) ;
-}
-
-// static uint32_t keypad ;
-// short getKey()
+// static PT_THREAD (protothread_keypad(struct pt *pt))
 // {
-//   printf("in getKey()\n");
-//   // Scan the keypad!
-//   for (short i = 0; i < KEYROWS; i++)
-//   {
-//       // Set a row high
-//       gpio_put_masked((0xF << BASE_KEYPAD_PIN),
-//                       (scancodes[i] << BASE_KEYPAD_PIN));
-//       // Small delay required
-//       sleep_us(1);
-//       // Read the keycode
-//       keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
-//       // Break if button(s) are pressed
-//       // if (keypad & button)
-//       // {
-//       //     pressed = true;
-//       //     break;
-//       // }
-//       // else
-//       // {
-//       //     pressed = false;
-//       // }
-//   }
-//   // If we found a button . . .
-//   if (keypad & button)
-//   {
-//       // Look for a valid keycode.
-//       short i;
-//       for (i = 0; i < NUMKEYS; i++)
-//       {
-//           if (keypad == keycodes[i])
-//           {
-//             printf("%d(pos0)\n",i);
-//             return i;
-//           }
-            
-//               // break;
-//       }
-//       // If we don't find one, report invalid keycode
-//       if (i == NUMKEYS)
-//       {
-//         printf("%d(pos1)\n",-1);
-//         return -1;
-//       }
-//           //  (i = -1);
-//   }
-//   // Otherwise, indicate invalid/non-pressed buttons
-//   else
-//       // (i = -1);
-//       {
-//         printf("%d(pos2)\n",-1);
-//         return -1;
-//       }
+//     // Indicate thread beginning
+//     PT_BEGIN(pt) ;
 
-  // // debounce here
-  // // We only take action when transitioning between maybe pressed to pressed state - only chirp on state transition
-  // switch (BUTTON_STATE)
-  // {
-  // case 0:
-  //     if (pressed)
-  //     {
-  //         BUTTON_STATE = 1;
-  //     }
-  //     break;
-  // case 1:
-  //     if (pressed)
-  //     {
-  //         BUTTON_STATE = 2;
-  //         action = true;
-  //     }
-  //     else
-  //     {
-  //         BUTTON_STATE = 0;
-  //     }
-  //     break;
-  // case 2:
-  //     if (pressed)
-  //     {
-  //         BUTTON_STATE = 2;
-  //     }
-  //     else
-  //     {
-  //         BUTTON_STATE = 3;
-  //     }
-  //     break;
-  // case 3:
-  //     if (pressed)
-  //     {
-  //         BUTTON_STATE = 2;
-  //     }
-  //     else
-  //     {
-  //         BUTTON_STATE = 0;
-  //     }
-  //     break;
+//     // Some variables
+//     static int i ;
+//     static uint32_t keypad ;
 
-  // default:
-  //     BUTTON_STATE = 0;
-  //     break;
-  // }
+//     while(1) {
+
+//         // gpio_put(LED, !gpio_get(LED)) ;
+
+//         // Scan the keypad!
+//         for (i=0; i<KEYROWS; i++) {
+//             // Set a row high
+//             gpio_put_masked((0xF << BASE_KEYPAD_PIN),
+//                             (scancodes[i] << BASE_KEYPAD_PIN)) ;
+//             // Small delay required
+//             sleep_us(1) ; 
+//             // Read the keycode
+//             keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F) ;
+//             // Break if button(s) are pressed
+//             if (keypad & button) break ;
+//         }
+//         // If we found a button . . .
+//         if (keypad & button) {
+//             // Look for a valid keycode.
+//             for (i=0; i<NUMKEYS; i++) {
+//                 if (keypad == keycodes[i]) break ;
+//             }
+//             // If we don't find one, report invalid keycode
+//             if (i==NUMKEYS) (i = -1) ;
+//         }
+//         // Otherwise, indicate invalid/non-pressed buttons
+//         else (i=-1) ;
+
+
+
+//         // Write key to VGA
+//         // if (i != prev_key) {
+//         //     prev_key = i ;
+//         //     fillRect(250, 20, 176, 30, RED); // red box
+//         //     sprintf(keytext, "%d", i) ;
+//         //     setCursor(250, 20) ;
+//         //     setTextSize(2) ;
+//         //     writeString(keytext) ;
+//         // }
+
+//         // Print key to terminal
+//         tracked_key=i;
+//         printf("\n%d", i) ;
+
+//         PT_YIELD_usec(30000) ;
+//     }
+//     // Indicate thread end
+//     PT_END(pt) ;
 // }
+
+#define LED             25
+short getKey()
+{
+  static int i ;
+  static uint32_t keypad ;
+
+  // Scan the keypad!
+  for (i=0; i<KEYROWS; i++) {
+      // Set a row high
+      gpio_put_masked((0xF << BASE_KEYPAD_PIN),
+                      (scancodes[i] << BASE_KEYPAD_PIN)) ;
+      // Small delay required
+      sleep_us(1) ; 
+      // Read the keycode
+      keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F) ;
+      // Break if button(s) are pressed
+      if (keypad & button) break ;
+  }
+  // If we found a button . . .
+  if (keypad & button) {
+      // Look for a valid keycode.
+      for (i=0; i<NUMKEYS; i++) {
+          if (keypad == keycodes[i]) break ;
+      }
+      // If we don't find one, report invalid keycode
+      if (i==NUMKEYS) (i = -1) ;
+  }
+  // Otherwise, indicate invalid/non-pressed buttons
+  else (i=-1) ;
+  gpio_put(LED, i==-1?false:true) ;
+  return i;
+}
 
 // Animation on core 0
 static PT_THREAD(protothread_anim(struct pt *pt))
@@ -454,8 +383,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       {}
       case 3: // Backward
       {
-        // tracked_key = getKey();
-        // printf("%d\n",tracked_key);
+        tracked_key = getKey();
+        printf("%d\n",tracked_key);
         switch(tracked_key) {
           // case 2: // up
           // {
@@ -531,8 +460,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   PT_END(pt);
 } // animation thread
 
-// Animation on core 1
-static PT_THREAD(protothread_anim1(struct pt *pt))
+// core 1
+static PT_THREAD(protothread_core1(struct pt *pt))
 {
   // Mark beginning of thread
   PT_BEGIN(pt);
@@ -559,7 +488,7 @@ static PT_THREAD(protothread_anim1(struct pt *pt))
 void core1_main()
 {
   // Add animation thread
-  pt_add_thread(protothread_anim1);
+  pt_add_thread(protothread_core1);
   // Start the scheduler
   pt_schedule_start;
 }
@@ -668,7 +597,6 @@ int main()
   multicore_launch_core1(&core1_main);
 
   // add threads
-  pt_add_thread(protothread_anim1);
   pt_add_thread(protothread_anim);
 
   ////////////////// KEYPAD INITS ///////////////////////
@@ -683,7 +611,7 @@ int main()
   gpio_pull_down((BASE_KEYPAD_PIN + 5)) ;
   gpio_pull_down((BASE_KEYPAD_PIN + 6)) ;
 
-  pt_add_thread(protothread_core_1) ;
+  // pt_add_thread(protothread_keypad) ;
 
   // start scheduler
   pt_schedule_start;
