@@ -47,7 +47,6 @@
 
 //===== Images ==============================================
 
-
 //=====  DMA Config  ========================================
 
 // Number of samples per period in sine table
@@ -91,7 +90,7 @@ typedef signed int fix15;
 #define divfix(a, b) (fix15)(div_s64s64((((signed long long)(a)) << 15), ((signed long long)(b))))
 
 // uS per frame
-//#define FRAME_RATE 33000
+// #define FRAME_RATE 33000
 #define FRAME_RATE 100000
 
 #define LED_PIN 25
@@ -99,20 +98,74 @@ typedef signed int fix15;
 //=== ===
 // Define constants
 #define SCREEN_WIDTH 640
+#define SCREEN_HEIGHT 480
 #define SCREEN_MIDLINE_X 320
-// Keypad 
+// Keypad
 #define BASE_KEYPAD_PIN 9
-#define KEYROWS         4
-#define NUMKEYS         12
+#define KEYROWS 4
+#define NUMKEYS 12
 
 const fix15 GRAVITY = float2fix15(0.75);
 
-unsigned int keycodes[12] = {   0x28, 0x11, 0x21, 0x41, 0x12,
-                                0x22, 0x42, 0x14, 0x24, 0x44,
-                                0x18, 0x48} ;
-unsigned int scancodes[4] = {   0x01, 0x02, 0x04, 0x08} ;
+unsigned int keycodes[12] = {0x28, 0x11, 0x21, 0x41, 0x12,
+                             0x22, 0x42, 0x14, 0x24, 0x44,
+                             0x18, 0x48};
+unsigned int scancodes[4] = {0x01, 0x02, 0x04, 0x08};
 
-unsigned int button = 0x70 ;
+unsigned int button = 0x70;
+
+// Define background colors
+#define GRASS_COLOR     GREEN
+#define DARK_GRASS      DARK_GREEN
+#define DIRT_COLOR      DARK_ORANGE
+#define STONE_COLOR     ORANGE
+
+#define GROUND_HEIGHT 80
+
+void drawGround()
+{
+  int groundTop = SCREEN_HEIGHT - GROUND_HEIGHT;
+
+  fillRect(0, groundTop, SCREEN_WIDTH, GROUND_HEIGHT, BLACK);
+}
+
+// Draw Background with only ground and clouds
+void drawBackground() {
+    // Main ground platform - positioned below where players stand (3/4 of screen height)
+    int groundTop = SCREEN_HEIGHT - 110;
+    
+    // Draw main grass layer
+    fillRect(0, groundTop, SCREEN_WIDTH, 30, DARK_GRASS);
+    
+    // Draw dirt layer below grass
+    // fillRect(0, groundTop + 30, SCREEN_WIDTH, 80, DIRT_COLOR);
+    fillRect(0, groundTop + 30, SCREEN_WIDTH, 80, DIRT_COLOR);
+    
+    // Draw textured grass on top (small varied tufts)
+    for (int i = 0; i < 60; i++) {
+        int grassX = 10 + i * 11;
+        int height = 5 + (i % 3) * 2; // Varied heights
+        fillRect(grassX, groundTop - height, 3, height, DARK_GRASS);
+    }
+    
+    // Add some stones/rocks scattered on the ground
+    for (int i = 0; i < 12; i++) {
+        int stoneX = 50 + i * 50;
+        int stoneY = groundTop + 10 + (i % 3) * 5;
+        int stoneSize = 4 + (i % 4) * 2;
+        fillCircle(stoneX, stoneY, stoneSize, STONE_COLOR);
+    }
+    
+    // Draw some ground texture/patterns
+    for (int i = 0; i < 20; i++) {
+        int x = 30 + i * 30;
+        // Darker patches of dirt
+        fillRect(x, groundTop + 35, 15, 10, YELLOW);
+    }
+    
+    // Draw ground edge detail (slightly darker line at the top edge)
+    drawLine(0, groundTop, SCREEN_WIDTH, groundTop, DARK_GRASS);
+}
 
 static uint32_t last_update_time = 0;
 static uint32_t elapsed_time_sec = 0;
@@ -131,7 +184,8 @@ typedef struct
   short frame;
   short attack_hitbox;
   short hp;
-}player;
+  Anim *animations;
+} player;
 
 typedef struct
 {
@@ -139,201 +193,182 @@ typedef struct
   short y_off;
   short w;
   short h;
-}hitbox;
+} hitbox;
 
+// const hitbox hitboxes[] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}; // possible bounding hitboxes
+// const hitbox hitboxes[] = {{12,40,25,40}};
+//{-7*4,32*4,(-7--28)*4 (18-32)*4}
+const hitbox hitboxes[] = {{28,160,60,160},{-28, 128, 84, 56}}; // 0: Default hitbox, 1:
+const short active_frames[] = {-1, 5, -1, -1};                                         // active frames for each attack
 
-const hitbox hitboxes[] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}; // possible bounding hitboxes
-const short active_frames[] = {0, 0, 0, 0}; // active frames for each attack
-//const short frames[][][][] = {{{{0}}}}; // pixels for each possible frame
+#define NUM_PLAYERS 2
 
-player p1 = {640/2,480/2,false,0,0,0,100};
+// player p1 = {640 / 2, 480 / 2, false, 0, 0, 0, 100, default_character};
+// player p2 = {500, 480 / 2, true, 0, 0, 0, 100, default_character};
 
-
-// const short (*const *Idle)[2] = {Idle_0,Idle_1,Idle_2,Idle_3}; 
+// player *players[2] = {&p1, &p2}; // array of players
+player players[2] = {{640/4, SCREEN_HEIGHT - GROUND_HEIGHT, true, 0, 0, 0, 100, E},{640*3/4, SCREEN_HEIGHT - GROUND_HEIGHT, false, 0, 0, 0, 100, A}};
 
 // typedef struct
 // {
-//   const short (*const *frames)[2]; //pointer to an array of 
+//   const short (*const *frames)[2]; //pointer to an array of
 //   const short *pixel_counts; //pixel counts in each frame
 //   const short size; //number of frames
 // }Animation;
 
-void drawSprite(const short arr[][2], short arr_len, short scale, bool flip, short x, short y, char color)
+
+// Draw health bars for both players
+void drawHealthBars() {
+  char hp_text[10]; // Buffer for HP text
+  
+  // Player 1 health bar - left side
+  fillRect(20, 20, 200, 20, WHITE); 
+  fillRect(20, 20, players[0].hp * 2, 20, BLACK); 
+
+  // Clear previous text area before writing new text
+  fillRect(230, 25, 50, 10, WHITE); // Clear P1 text area
+  
+  // Display Player 1 (P1) HP value
+  sprintf(hp_text, "HP: %d", players[0].hp);
+  setTextSize(1);
+  setCursor(230, 25); 
+  writeString(hp_text);
+  
+  // Player 2 (P2) health bar - right side
+  fillRect(420, 20, 200, 20, WHITE); 
+  fillRect(420, 20, players[1].hp * 2, 20, BLACK);
+
+  // Clear previous text area
+  fillRect(370, 25, 50, 10, WHITE); // Clear P2 text area
+  
+  // Display Player 2 HP value
+  sprintf(hp_text, "HP: %d", players[1].hp);
+  setTextSize(1);
+  setCursor(370, 25); // left of P2 health bar
+  writeString(hp_text);
+}
+
+
+void drawSprite(const short arr[][2], short arr_len, bool flip, short x, short y, char color)
 {
-  if(flip)
+  if (flip)
+    // for (short i = 0; i < arr_len; i++)
+    //   drawPixel(x - arr[i][0], y - arr[i][1], color);
     for(short i=0;i<arr_len;i++)
-      drawPixel(x-arr[i][0],y-arr[i][1],color);
-    // for(short i=0;i<arr_len;i++)
-    //   // fillRect(x-scale*arr[i][0],y-scale*arr[i][1],scale,scale,color);
-    //   fillRect(x-((arr[i][0])<<2),y-((arr[i][1])<<2),scale,scale,color);
-  else  
+  //   // fillRect(x-scale*arr[i][0],y-scale*arr[i][1],scale,scale,color);
+      fillRect(x-((arr[i][0])<<2),y-((arr[i][1])<<2),4,4,color);
+  else
+    // for (short i = 0; i < arr_len; i++)
+    //   drawPixel(x + arr[i][0], y - arr[i][1], color);
     for(short i=0;i<arr_len;i++)
-      drawPixel(x+arr[i][0],y-arr[i][1],color);
-    // for(short i=0;i<arr_len;i++)
-    //   fillRect(x-((arr[i][0])<<2),y-((arr[i][1])<<2),scale,scale,color);
+      fillRect(x+((arr[i][0])<<2),y-((arr[i][1])<<2),4,4,color);
 }
 
 void drawFrame(player *p, char color)
 {
-  if(p->state==0) //idle
-  {
-    if(p->frame==0)
-      drawSprite(Idle_0, 182, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==1)
-      drawSprite(Idle_1, 184, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==2)
-      drawSprite(Idle_2, 198, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==3)
-      drawSprite(Idle_3, 189, 4, p->flip, p->x, p->y, color);
-    else
-      drawSprite(Idle_4, 191, 4, p->flip, p->x, p->y, color);
-  }
+  // drawRect(p->x - ((hitboxes[0].x_off)), p->y - ((hitboxes[0].y_off)), ((hitboxes[0].w)), ((hitboxes[0].h)), GREEN);
+  // if(p->flip)
+  //   drawRect(p->x - ((hitboxes[1].x_off)), p->y - ((hitboxes[1].y_off)), ((hitboxes[1].w)), ((hitboxes[1].h)), RED);
+  // else
+  //   drawRect(p->x + ((hitboxes[1].x_off-hitboxes[1].w)), p->y - ((hitboxes[1].y_off)), ((hitboxes[1].w)), ((hitboxes[1].h)), RED);
+  drawSprite(p->animations[p->state].f[p->frame].p, p->animations[p->state].f[p->frame].len, p->flip, p->x, p->y, color);
+}
 
-  else if(p->state==1)
-  {
-    if(p->frame==0)
-      drawSprite(E_Attack_0, 222, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==1)
-      drawSprite(E_Attack_1, 219, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==2)
-      drawSprite(E_Attack_2, 222, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==3)
-      drawSprite(E_Attack_3, 208, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==4)
-      drawSprite(E_Attack_4, 187, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==5)
-      drawSprite(E_Attack_5, 240, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==6)
-      drawSprite(E_Attack_6, 229, 4, p->flip, p->x, p->y, color);
-    else 
-      drawSprite(E_Attack_7, 209, 4, p->flip, p->x, p->y, color);
+bool isOverlapping(short h1, short h2, short attacker)
+{
+  // short h1x = players[attacker].x-hitboxes[h1].x_off;
+  // short h1y = players[attacker].x-hitboxes[h1].y_off;
 
-  }
+  short h1xL = players[attacker].x-hitboxes[h1].x_off;
+  short h1xR = players[attacker].x+hitboxes[h1].x_off-hitboxes[h1].w;
+  short h2xL = players[!attacker].x-hitboxes[h2].x_off;
+  short h2xR = players[!attacker].x+hitboxes[h2].x_off-hitboxes[h2].w;
 
-  else if(p->state==2)
-  {
-    if(p->frame==0)
-      drawSprite(Forward_0, 155, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==1)
-      drawSprite(Forward_1, 159, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==2)
-      drawSprite(Forward_2, 160, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==3)
-      drawSprite(Forward_3, 165, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==4)
-      drawSprite(Forward_4, 160, 4, p->flip, p->x, p->y, color);
-    else
-      drawSprite(Forward_5, 174, 4, p->flip, p->x, p->y, color);
-  }
+  short h1y = players[attacker].y-hitboxes[h1].y_off;
+  short h2y = players[!attacker].y-hitboxes[h2].y_off;
 
-  else if(p->state==3)
+  short h1x1;
+  short h1x2;
+  short h2x1;
+  short h2x2;
+
+  if (players[attacker].flip)
   {
-    if(p->frame==0)
-      drawSprite(Backward_0, 160, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==1)
-      drawSprite(Backward_1, 157, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==2)
-      drawSprite(Backward_2, 163, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==3)
-      drawSprite(Backward_3, 182, 4, p->flip, p->x, p->y, color);
-    else if(p->frame==4)
-      drawSprite(Backward_4, 168, 4, p->flip, p->x, p->y, color);
-    else
-      drawSprite(Backward_5, 161, 4, p->flip, p->x, p->y, color);
+    h1x1 = h1xL;
+    h1x2 = h1xL+hitboxes[h1].w;
   }
+  else
+  {
+    h1x1 = h1xR;
+    h1x2 = h1xR+hitboxes[h1].w;
+  }
+  if (players[!attacker].flip)
+  {
+    h2x1 = h2xL;
+    h2x2 = h2xL+hitboxes[h2].w;
+  }
+  else
+  {
+    h2x1 = h2xR;
+    h2x2 = h2xR+hitboxes[h2].w;
+  }
+  
+  // drawRect(h1x1,h1y,hitboxes[h1].w,hitboxes[h1].h, BLUE);
+  // drawRect(h2x1,h2y,hitboxes[h2].w,hitboxes[h2].h, YELLOW);
+  
+  // return ((h1x>h2x && h1x<h2x+hitboxes[h2].w)||(h1x+hitboxes[h1].w>h2x && h1x<h2x+hitboxes[h2].w)) && ((h1y<h2y && h1y>h2y-hitboxes[h2].h)||(h1y-hitboxes[h1].h<h2y && h1y-hitboxes[h1].h>h2y-hitboxes[h2].h));
+  return ((h1x1>h2x1 && h1x1<h2x2)||(h1x2>h2x1 && h1x2<h2x2)) && ((h1y<h2y && h1y>h2y-hitboxes[h2].h)||(h1y-hitboxes[h1].h<h2y && h1y-hitboxes[h1].h>h2y-hitboxes[h2].h));
 }
 
 
-// static PT_THREAD (protothread_keypad(struct pt *pt))
-// {
-//     // Indicate thread beginning
-//     PT_BEGIN(pt) ;
-
-//     // Some variables
-//     static int i ;
-//     static uint32_t keypad ;
-
-//     while(1) {
-
-//         // gpio_put(LED, !gpio_get(LED)) ;
-
-//         // Scan the keypad!
-//         for (i=0; i<KEYROWS; i++) {
-//             // Set a row high
-//             gpio_put_masked((0xF << BASE_KEYPAD_PIN),
-//                             (scancodes[i] << BASE_KEYPAD_PIN)) ;
-//             // Small delay required
-//             sleep_us(1) ; 
-//             // Read the keycode
-//             keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F) ;
-//             // Break if button(s) are pressed
-//             if (keypad & button) break ;
-//         }
-//         // If we found a button . . .
-//         if (keypad & button) {
-//             // Look for a valid keycode.
-//             for (i=0; i<NUMKEYS; i++) {
-//                 if (keypad == keycodes[i]) break ;
-//             }
-//             // If we don't find one, report invalid keycode
-//             if (i==NUMKEYS) (i = -1) ;
-//         }
-//         // Otherwise, indicate invalid/non-pressed buttons
-//         else (i=-1) ;
-
-
-
-//         // Write key to VGA
-//         // if (i != prev_key) {
-//         //     prev_key = i ;
-//         //     fillRect(250, 20, 176, 30, RED); // red box
-//         //     sprintf(keytext, "%d", i) ;
-//         //     setCursor(250, 20) ;
-//         //     setTextSize(2) ;
-//         //     writeString(keytext) ;
-//         // }
-
-//         // Print key to terminal
-//         tracked_key=i;
-//         printf("\n%d", i) ;
-
-//         PT_YIELD_usec(30000) ;
-//     }
-//     // Indicate thread end
-//     PT_END(pt) ;
-// }
-
-#define LED             25
-short getKey()
+#define LED 25
+short getKey(bool p1)
 {
-  static int i ;
-  static uint32_t keypad ;
+  static int i;
+  static uint32_t keypad;
 
   // Scan the keypad!
-  for (i=0; i<KEYROWS; i++) {
-      // Set a row high
-      gpio_put_masked((0xF << BASE_KEYPAD_PIN),
-                      (scancodes[i] << BASE_KEYPAD_PIN)) ;
-      // Small delay required
-      sleep_us(1) ; 
-      // Read the keycode
-      keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F) ;
-      // Break if button(s) are pressed
-      if (keypad & button) break ;
+  for (i = 0; i < KEYROWS; i++)
+  {
+    // Set a row high
+    gpio_put_masked((0xF << BASE_KEYPAD_PIN),
+                    (scancodes[i] << BASE_KEYPAD_PIN));
+    // Small delay required
+    sleep_us(1);
+    // Read the keycode
+    keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
+    // Break if button(s) are pressed
+    if (keypad & button)
+      break;
   }
   // If we found a button . . .
-  if (keypad & button) {
-      // Look for a valid keycode.
-      for (i=0; i<NUMKEYS; i++) {
-          if (keypad == keycodes[i]) break ;
-      }
-      // If we don't find one, report invalid keycode
-      if (i==NUMKEYS) (i = -1) ;
+  if (keypad & button)
+  {
+    // Look for a valid keycode.
+    for (i = 0; i < NUMKEYS; i++)
+    {
+      if (keypad == keycodes[i])
+        break;
+    }
+    // If we don't find one, report invalid keycode
+    if (i == NUMKEYS)
+      (i = -1);
   }
   // Otherwise, indicate invalid/non-pressed buttons
-  else (i=-1) ;
-  gpio_put(LED, i==-1?false:true) ;
-  return i;
+  else
+    (i = -1);
+  gpio_put(LED, i == -1 ? false : true);
+  if(p1)
+    return i;
+  switch(i)
+  {
+    case 11:
+      return 6;
+    case 0:
+      return 5;
+    default:
+      return i-6;
+  }
 }
 
 // Animation on core 0
@@ -346,102 +381,128 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   static int begin_time;
   static int spare_time;
 
-  fillRect(0,0,640,480,WHITE); // set background to white
+  fillRect(0, 0, 640, 480, WHITE); // set background to white
+  // draw background at the start (initialize)
+  drawGround();
+  // drawBackground();
 
   // bool skipped0=false;
   // bool skipped1=false;
 
   while (1)
   {
-    // if(!skipped0)
-    // {
-    //   skipped0=true;
-    //   continue;
-    // }
-    // else if(!skipped1)
-    // {
-    //   skipped1=true;
-    //   continue;
-    // }
-    // else
-    // {
-    //   skipped0=false;
-    //   skipped1=false;
-    // }
 
     // Measure time at start of thread
     begin_time = time_us_32();
 
-    drawFrame(&p1, WHITE); //player 1, erase previous frame
-    
-    
-    // Player 1 logic, add loop for player 2
-    switch(p1.state) {
+    // slow approach - redraw background every frame
+    // drawBackground(); 
+
+    for (int i = 0; i < NUM_PLAYERS; i++)
+    {
+      drawFrame(&players[i], WHITE); // player 1, erase previous frame
+      // Player 1 logic, add loop for player 2
+      switch (players[i].state)
+      {
       case 0: // Idle
-      {}
       case 2: // Forward
-      {}
       case 3: // Backward
       {
-        tracked_key = getKey();
-        printf("%d\n",tracked_key);
-        switch(tracked_key) {
-          // case 2: // up
-          // {
-          //   p1.y-=1;
-          //   break;
-          // }
-          // case 5: // down
-          // {
-          //   p1.y+=1;
-          //   break;
-          // }
-          case 4: // left
-          {
-            p1.x-=1;
-            p1.state=2;
-            break;
-          }
-          case 6: // right
-          {
-            p1.x+=1;
-            p1.state=3;
-            break;
-          }
-          case 1: // attack
-          {
-            p1.state=1; // attack state
-            p1.frame=0;
-            break;
-          }
-          default:
-          {
-            p1.state=0; // idle state
-            break;
-          }
+        tracked_key = getKey(i==0);
+        //printf("%d\n", tracked_key);
+        switch (tracked_key)
+        {
+        // case 2: // up
+        // {
+        //   p1.y-=1;
+        //   break;
+        // }
+        // case 5: // down
+        // {
+        //   p1.y+=1;
+        //   break;
+        // }
+        case 4: // left
+        {
+          players[i].x -= 5;
+          players[i].state = players[i].flip?3:2;
+          break;
         }
-        p1.frame++;
-        if(p1.state==0 && p1.frame>4||((p1.state==2||p1.state==3) && p1.frame>6))
-          p1.frame=0;
+        case 6: // right
+        {
+          players[i].x += 5;
+          players[i].state = players[i].flip?2:3;
+          break;
+        }
+        case 1: // attack
+        {
+          players[i].state = 1; // attack state
+          players[i].frame = 0;
+          break;
+        }
+        default:
+        {
+          players[i].state = 0; // idle state
+          break;
+        }
+        }
+        players[i].frame++;
+        // if (players[i].state == 0 && players[i].frame > 4 || ((players[i].state == 2 || players[i].state == 3) && players[i].frame > 6))
+        if(players[i].frame >= players[i].animations[players[i].state].len)
+          players[i].frame = 0;
         break;
       }
       case 1: // Attack
       {
-        p1.frame++;
-        if(p1.frame>7)
-          p1.frame=0;
-        if(p1.frame==0)
-          p1.state=0; // back to idle state
+        players[i].frame++;
+        if (players[i].frame > 7)
+          players[i].frame = 0;
+      
+        //check if attack active
+        if(players[i].frame == active_frames[players[i].state])
+        {
+
+          if(isOverlapping(1,0,i)) 
+          {
+            players[!i].frame = 0;
+            players[!i].state = 4; // hurt state
+            players[!i].hp -= 10; // hurt state
+
+          }
+        }
+
+        if (players[i].frame == 0)
+          players[i].state = 0; // back to idle state
+        break;
+      }
+      case 4: // hurt state
+      {
+        players[i].frame++;
+        if (players[i].frame > 3)
+          players[i].frame = 0;
+        if (players[i].frame == 0)
+          players[i].state = 0; // back to idle state
         break;
       }
       default:
       {
         break;
       }
+      }
+
+      drawFrame(&players[i], BLACK); // player 1, draw current frame
     }
 
-    
-    drawFrame(&p1, BLACK); //player 1, draw current frame
+
+    if (players[0].hp <= 0 || players[1].hp <= 0) {
+      setCursor(SCREEN_WIDTH/2 - 200, SCREEN_HEIGHT/2 - 200);
+      setTextSize(4);
+      if (players[0].hp <= 0) {
+        writeString("PLAYER 2 WINS!");
+      } else {
+        writeString("PLAYER 1 WINS!");
+      }
+    }
 
     // delay in accordance with frame rate
     spare_time = FRAME_RATE - (time_us_32() - begin_time);
@@ -468,15 +529,16 @@ static PT_THREAD(protothread_core1(struct pt *pt))
   // Variables for maintaining frame rate
   static int begin_time;
   static int spare_time;
-  
+
   while (1)
   {
     // Measure time at start of thread
     begin_time = time_us_32();
+    drawHealthBars();
+
     
-
-
     spare_time = FRAME_RATE - (time_us_32() - begin_time);
+
 
     // yield for necessary amount of time
     PT_YIELD_usec(spare_time);
@@ -601,19 +663,18 @@ int main()
 
   ////////////////// KEYPAD INITS ///////////////////////
   // Initialize the keypad GPIO's
-  gpio_init_mask((0x7F << BASE_KEYPAD_PIN)) ;
+  gpio_init_mask((0x7F << BASE_KEYPAD_PIN));
   // Set row-pins to output
-  gpio_set_dir_out_masked((0xF << BASE_KEYPAD_PIN)) ;
+  gpio_set_dir_out_masked((0xF << BASE_KEYPAD_PIN));
   // Set all output pins to low
-  gpio_put_masked((0xF << BASE_KEYPAD_PIN), (0x0 << BASE_KEYPAD_PIN)) ;
+  gpio_put_masked((0xF << BASE_KEYPAD_PIN), (0x0 << BASE_KEYPAD_PIN));
   // Turn on pulldown resistors for column pins (on by default)
-  gpio_pull_down((BASE_KEYPAD_PIN + 4)) ;
-  gpio_pull_down((BASE_KEYPAD_PIN + 5)) ;
-  gpio_pull_down((BASE_KEYPAD_PIN + 6)) ;
+  gpio_pull_down((BASE_KEYPAD_PIN + 4));
+  gpio_pull_down((BASE_KEYPAD_PIN + 5));
+  gpio_pull_down((BASE_KEYPAD_PIN + 6));
 
   // pt_add_thread(protothread_keypad) ;
 
   // start scheduler
   pt_schedule_start;
 }
-
