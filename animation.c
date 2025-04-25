@@ -40,12 +40,13 @@
 #include "hardware/dma.h"
 #include "hardware/spi.h"
 #include "hardware/adc.h"
+#include "hardware/sync.h"
 #include "sprites.h"
+#include "clouds.h"
+#include "rooftop.h"
 
 // Include protothreads
 #include "pt_cornell_rp2040_v1_3.h"
-
-//===== Images ==============================================
 
 //=====  DMA Config  ========================================
 
@@ -115,12 +116,170 @@ unsigned int scancodes[4] = {0x01, 0x02, 0x04, 0x08};
 unsigned int button = 0x70;
 
 // Define background colors
-#define GRASS_COLOR     GREEN
-#define DARK_GRASS      DARK_GREEN
-#define DIRT_COLOR      DARK_ORANGE
-#define STONE_COLOR     ORANGE
+#define GRASS_COLOR GREEN
+#define DARK_GRASS DARK_GREEN
+#define DIRT_COLOR DARK_ORANGE
+#define STONE_COLOR ORANGE
 
-#define GROUND_HEIGHT 80
+#define GROUND_HEIGHT 60
+#define JUMP_HEIGHT 480-GROUND_HEIGHT-240
+
+//=========Sound==========
+
+// Low-level alarm infrastructure we'll be using
+#define ALARM_NUM 0
+#define ALARM_IRQ TIMER_IRQ_0
+
+// Direct Digital Synthesis (DDS) parameters
+#define two32 4294967296.0 // 2^32 (a constant)
+#define Fs 50000
+#define DELAY 20 // 1/Fs (in microseconds)
+
+// the DDS units - core 0
+// Phase accumulator and phase increment. Increment sets output frequency.
+volatile unsigned int phase_accum_main_0;
+// volatile unsigned int phase_incr_main_0 = (400.0*two32)/Fs ;
+
+// variable accumulator instead of a fixed one
+// accumulator value changes based on current frequency
+volatile unsigned int phase_incr_main_0;
+// track the frequency (i.e. swoop/chirp)
+volatile unsigned int current_frequency;
+// variable to store 2^32 / Fs instead of calculating it every time
+volatile unsigned int two32_fs = two32 / Fs;
+
+// DDS sine table (populated in main())
+#define sine_table_size 256
+fix15 sin_table[sine_table_size];
+
+// Values output to DAC
+int DAC_output_0;
+int DAC_output_1;
+
+// Amplitude modulation parameters and variables
+fix15 max_amplitude = int2fix15(1); // maximum amplitude
+fix15 attack_inc;                   // rate at which sound ramps up
+fix15 decay_inc;                    // rate at which sound ramps down
+fix15 current_amplitude_0 = 0;      // current amplitude (modified in ISR)
+fix15 current_amplitude_1 = 0;      // current amplitude (modified in ISR)
+
+// Timing parameters for beeps (units of interrupts)
+// #define ATTACK_TIME 250
+#define ATTACK_TIME 250
+// #define DECAY_TIME 250
+#define DECAY_TIME 250
+// #define BEEP_DURATION 6500
+// #define BEEP_DURATION 125000
+#define BEEP_DURATION 12500 // the goal is 0.125 sec
+
+// State machine variables
+volatile unsigned int count_0 = 0;
+
+// button state: 0 = not pressed, 1 = maybe pressed, 2 = pressed, 3 = maybe not pressed
+volatile unsigned int BUTTON_STATE = 0;
+
+// Mode state: 0 = normal play sound, 1 = record sound, 2 = playback sound
+volatile unsigned int MODE = 0;
+
+// Track the pressed button
+volatile unsigned int TRACKED_BUTTON = 0;
+
+// SPI data
+uint16_t DAC_data_1; // output value
+uint16_t DAC_data_0; // output value
+
+// DAC parameters (see the DAC datasheet)
+// A-channel, 1x, active
+#define DAC_config_chan_A 0b0011000000000000
+// B-channel, 1x, active
+#define DAC_config_chan_B 0b1011000000000000
+
+// SPI configurations (note these represent GPIO number, NOT pin number)
+#define PIN_MISO 4
+#define PIN_CS 5
+#define PIN_SCK 6
+#define PIN_MOSI 7
+#define LDAC 8
+#define LED 25
+#define SPI_PORT spi0
+
+// GPIO for timing the ISR
+#define ISR_GPIO 2
+
+// Playback array and variables.
+
+// Max amount of sounds we can store and play back
+#define max_sounds 50
+
+unsigned int Theme_freq[32] = {587, 587, 622, 622, 440, 440, 0, 0, 175, 587, 247, 622, 440, 0, 0, 932, 1109, 1109, 622, 622, 440, 440, 0, 0, 1109, 587, 622, 247, 220, 0, 0, 294};
+int Theme_id = 0;
+
+static void play_sound()
+{
+  current_frequency = Theme_freq[Theme_id];
+
+  phase_incr_main_0 = current_frequency * two32_fs;
+  // DDS phase and sine table lookup
+  phase_accum_main_0 += phase_incr_main_0;
+  if (current_amplitude_0 > int2fix15(1))
+  {
+    current_amplitude_0 = int2fix15(1);
+  }
+  DAC_output_0 = fix2int15(multfix15(current_amplitude_0,
+                                     sin_table[phase_accum_main_0 >> 24])) +
+                 2048;
+
+  // Ramp up amplitude
+  if (count_0 < ATTACK_TIME)
+  {
+    current_amplitude_0 = (current_amplitude_0 + attack_inc);
+  }
+  // Ramp down amplitude
+  else if (count_0 > BEEP_DURATION - DECAY_TIME)
+  {
+    current_amplitude_0 = (current_amplitude_0 - decay_inc);
+  }
+
+  // Mask with DAC control bits
+  DAC_data_0 = (DAC_config_chan_B | (DAC_output_0 & 0xffff));
+
+  // SPI write (no spinlock b/c of SPI buffer)
+  spi_write16_blocking(SPI_PORT, &DAC_data_0, 1);
+
+  // Increment the counter
+  count_0 += 1;
+
+  // note transition
+  if (count_0 >= BEEP_DURATION)
+  {
+    count_0 = 0;
+
+    Theme_id++;
+
+    if (Theme_id >= 32)
+    {
+      Theme_id = 0;
+    }
+  }
+}
+
+// This timer ISR is called on core 0
+static void alarm_irq(void)
+{
+  // Assert a GPIO when we enter the interrupt
+  gpio_put(ISR_GPIO, 1);
+
+  // Clear the alarm irq
+  hw_clear_bits(&timer_hw->intr, 1u << ALARM_NUM);
+
+  // Reset the alarm register
+  timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
+
+  play_sound();
+
+  // De-assert the GPIO when we leave the interrupt
+  gpio_put(ISR_GPIO, 0);
+}
 
 void drawGround()
 {
@@ -130,42 +289,61 @@ void drawGround()
 }
 
 // Draw Background with only ground and clouds
-void drawBackground() {
-    // Main ground platform - positioned below where players stand (3/4 of screen height)
-    int groundTop = SCREEN_HEIGHT - 110;
-    
-    // Draw main grass layer
-    fillRect(0, groundTop, SCREEN_WIDTH, 30, DARK_GRASS);
-    
-    // Draw dirt layer below grass
-    // fillRect(0, groundTop + 30, SCREEN_WIDTH, 80, DIRT_COLOR);
-    fillRect(0, groundTop + 30, SCREEN_WIDTH, 80, DIRT_COLOR);
-    
-    // Draw textured grass on top (small varied tufts)
-    for (int i = 0; i < 60; i++) {
-        int grassX = 10 + i * 11;
-        int height = 5 + (i % 3) * 2; // Varied heights
-        fillRect(grassX, groundTop - height, 3, height, DARK_GRASS);
-    }
-    
-    // Add some stones/rocks scattered on the ground
-    for (int i = 0; i < 12; i++) {
-        int stoneX = 50 + i * 50;
-        int stoneY = groundTop + 10 + (i % 3) * 5;
-        int stoneSize = 4 + (i % 4) * 2;
-        fillCircle(stoneX, stoneY, stoneSize, STONE_COLOR);
-    }
-    
-    // Draw some ground texture/patterns
-    for (int i = 0; i < 20; i++) {
-        int x = 30 + i * 30;
-        // Darker patches of dirt
-        fillRect(x, groundTop + 35, 15, 10, YELLOW);
-    }
-    
-    // Draw ground edge detail (slightly darker line at the top edge)
-    drawLine(0, groundTop, SCREEN_WIDTH, groundTop, DARK_GRASS);
+void drawBackground()
+{
+  // Main ground platform - positioned below where players stand (3/4 of screen height)
+  int groundTop = SCREEN_HEIGHT - 110;
+
+  // Draw main grass layer
+  fillRect(0, groundTop, SCREEN_WIDTH, 30, DARK_GRASS);
+
+  // Draw dirt layer below grass
+  // fillRect(0, groundTop + 30, SCREEN_WIDTH, 80, DIRT_COLOR);
+  fillRect(0, groundTop + 30, SCREEN_WIDTH, 80, DIRT_COLOR);
+
+  // Draw textured grass on top (small varied tufts)
+  for (int i = 0; i < 60; i++)
+  {
+    int grassX = 10 + i * 11;
+    int height = 5 + (i % 3) * 2; // Varied heights
+    fillRect(grassX, groundTop - height, 3, height, DARK_GRASS);
+  }
+
+  // Add some stones/rocks scattered on the ground
+  for (int i = 0; i < 12; i++)
+  {
+    int stoneX = 50 + i * 50;
+    int stoneY = groundTop + 10 + (i % 3) * 5;
+    int stoneSize = 4 + (i % 4) * 2;
+    fillCircle(stoneX, stoneY, stoneSize, STONE_COLOR);
+  }
+
+  // Draw some ground texture/patterns
+  for (int i = 0; i < 20; i++)
+  {
+    int x = 30 + i * 30;
+    // Darker patches of dirt
+    fillRect(x, groundTop + 35, 15, 10, YELLOW);
+  }
+
+  // Draw ground edge detail (slightly darker line at the top edge)
+  drawLine(0, groundTop, SCREEN_WIDTH, groundTop, DARK_GRASS);
 }
+
+const short clouds_len = 479;
+const short rooftop_len = 741;
+
+// Draw background components (i.e. clouds, platform)
+void drawBackgroundComponent(const short arr[][2], short arr_len, short x_offset, short y_offset) {
+  for (short i = 0; i < arr_len; i++) {
+    short x = x_offset + (arr[i][0] << 2);
+    short y = y_offset - (arr[i][1] << 2);
+    fillRect(x, y, 4, 4, WHITE);
+
+    // fillRect(arr[i][0] << 2, arr[i][1] << 2, 4, 4, WHITE);
+  }
+}
+
 
 static uint32_t last_update_time = 0;
 static uint32_t elapsed_time_sec = 0;
@@ -185,6 +363,8 @@ typedef struct
   short attack_hitbox;
   short hp;
   Anim *animations;
+  
+  bool falling;
 } player;
 
 typedef struct
@@ -198,8 +378,8 @@ typedef struct
 // const hitbox hitboxes[] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}; // possible bounding hitboxes
 // const hitbox hitboxes[] = {{12,40,25,40}};
 //{-7*4,32*4,(-7--28)*4 (18-32)*4}
-const hitbox hitboxes[] = {{28,160,60,160},{-28, 128, 84, 56}}; // 0: Default hitbox, 1:
-const short active_frames[] = {-1, 5, -1, -1};                                         // active frames for each attack
+const hitbox hitboxes[] = {{28, 160, 60, 160}, {-28, 128, 84, 56}}; // 0: Default hitbox, 1:
+const short active_frames[] = {-1, 5, -1, -1};                      // active frames for each attack
 
 #define NUM_PLAYERS 2
 
@@ -207,7 +387,7 @@ const short active_frames[] = {-1, 5, -1, -1};                                  
 // player p2 = {500, 480 / 2, true, 0, 0, 0, 100, default_character};
 
 // player *players[2] = {&p1, &p2}; // array of players
-player players[2] = {{640/4, SCREEN_HEIGHT - GROUND_HEIGHT, true, 0, 0, 0, 100, E},{640*3/4, SCREEN_HEIGHT - GROUND_HEIGHT, false, 0, 0, 0, 100, A}};
+player players[2] = {{640 / 4, SCREEN_HEIGHT - GROUND_HEIGHT, true, 0, 0, 0, 100, E, false}, {640 * 3 / 4, SCREEN_HEIGHT - GROUND_HEIGHT, false, 0, 0, 0, 100, A, false}};
 
 // typedef struct
 // {
@@ -216,31 +396,31 @@ player players[2] = {{640/4, SCREEN_HEIGHT - GROUND_HEIGHT, true, 0, 0, 0, 100, 
 //   const short size; //number of frames
 // }Animation;
 
-
 // Draw health bars for both players
-void drawHealthBars() {
+void drawHealthBars()
+{
   char hp_text[10]; // Buffer for HP text
-  
+
   // Player 1 health bar - left side
-  fillRect(20, 20, 200, 20, WHITE); 
-  fillRect(20, 20, players[0].hp * 2, 20, BLACK); 
+  fillRect(20, 20, 200, 20, WHITE);
+  fillRect(20, 20, players[0].hp * 2, 20, BLACK);
 
   // Clear previous text area before writing new text
   fillRect(230, 25, 50, 10, WHITE); // Clear P1 text area
-  
+
   // Display Player 1 (P1) HP value
   sprintf(hp_text, "HP: %d", players[0].hp);
   setTextSize(1);
-  setCursor(230, 25); 
+  setCursor(230, 25);
   writeString(hp_text);
-  
+
   // Player 2 (P2) health bar - right side
-  fillRect(420, 20, 200, 20, WHITE); 
+  fillRect(420, 20, 200, 20, WHITE);
   fillRect(420, 20, players[1].hp * 2, 20, BLACK);
 
   // Clear previous text area
   fillRect(370, 25, 50, 10, WHITE); // Clear P2 text area
-  
+
   // Display Player 2 HP value
   sprintf(hp_text, "HP: %d", players[1].hp);
   setTextSize(1);
@@ -254,14 +434,14 @@ void drawSprite(const short arr[][2], short arr_len, bool flip, short x, short y
   if (flip)
     // for (short i = 0; i < arr_len; i++)
     //   drawPixel(x - arr[i][0], y - arr[i][1], color);
-    for(short i=0;i<arr_len;i++)
-  //   // fillRect(x-scale*arr[i][0],y-scale*arr[i][1],scale,scale,color);
-      fillRect(x-((arr[i][0])<<2),y-((arr[i][1])<<2),4,4,color);
+    for (short i = 0; i < arr_len; i++)
+      //   // fillRect(x-scale*arr[i][0],y-scale*arr[i][1],scale,scale,color);
+      fillRect(x - ((arr[i][0]) << 2), y - ((arr[i][1]) << 2), 4, 4, color);
   else
     // for (short i = 0; i < arr_len; i++)
     //   drawPixel(x + arr[i][0], y - arr[i][1], color);
-    for(short i=0;i<arr_len;i++)
-      fillRect(x+((arr[i][0])<<2),y-((arr[i][1])<<2),4,4,color);
+    for (short i = 0; i < arr_len; i++)
+      fillRect(x + ((arr[i][0]) << 2), y - ((arr[i][1]) << 2), 4, 4, color);
 }
 
 void drawFrame(player *p, char color)
@@ -279,13 +459,13 @@ bool isOverlapping(short h1, short h2, short attacker)
   // short h1x = players[attacker].x-hitboxes[h1].x_off;
   // short h1y = players[attacker].x-hitboxes[h1].y_off;
 
-  short h1xL = players[attacker].x-hitboxes[h1].x_off;
-  short h1xR = players[attacker].x+hitboxes[h1].x_off-hitboxes[h1].w;
-  short h2xL = players[!attacker].x-hitboxes[h2].x_off;
-  short h2xR = players[!attacker].x+hitboxes[h2].x_off-hitboxes[h2].w;
+  short h1xL = players[attacker].x - hitboxes[h1].x_off;
+  short h1xR = players[attacker].x + hitboxes[h1].x_off - hitboxes[h1].w;
+  short h2xL = players[!attacker].x - hitboxes[h2].x_off;
+  short h2xR = players[!attacker].x + hitboxes[h2].x_off - hitboxes[h2].w;
 
-  short h1y = players[attacker].y-hitboxes[h1].y_off;
-  short h2y = players[!attacker].y-hitboxes[h2].y_off;
+  short h1y = players[attacker].y - hitboxes[h1].y_off;
+  short h2y = players[!attacker].y - hitboxes[h2].y_off;
 
   short h1x1;
   short h1x2;
@@ -295,31 +475,56 @@ bool isOverlapping(short h1, short h2, short attacker)
   if (players[attacker].flip)
   {
     h1x1 = h1xL;
-    h1x2 = h1xL+hitboxes[h1].w;
+    h1x2 = h1xL + hitboxes[h1].w;
   }
   else
   {
     h1x1 = h1xR;
-    h1x2 = h1xR+hitboxes[h1].w;
+    h1x2 = h1xR + hitboxes[h1].w;
   }
   if (players[!attacker].flip)
   {
     h2x1 = h2xL;
-    h2x2 = h2xL+hitboxes[h2].w;
+    h2x2 = h2xL + hitboxes[h2].w;
   }
   else
   {
     h2x1 = h2xR;
-    h2x2 = h2xR+hitboxes[h2].w;
+    h2x2 = h2xR + hitboxes[h2].w;
   }
-  
-  // drawRect(h1x1,h1y,hitboxes[h1].w,hitboxes[h1].h, BLUE);
-  // drawRect(h2x1,h2y,hitboxes[h2].w,hitboxes[h2].h, YELLOW);
-  
-  // return ((h1x>h2x && h1x<h2x+hitboxes[h2].w)||(h1x+hitboxes[h1].w>h2x && h1x<h2x+hitboxes[h2].w)) && ((h1y<h2y && h1y>h2y-hitboxes[h2].h)||(h1y-hitboxes[h1].h<h2y && h1y-hitboxes[h1].h>h2y-hitboxes[h2].h));
-  return ((h1x1>h2x1 && h1x1<h2x2)||(h1x2>h2x1 && h1x2<h2x2)) && ((h1y<h2y && h1y>h2y-hitboxes[h2].h)||(h1y-hitboxes[h1].h<h2y && h1y-hitboxes[h1].h>h2y-hitboxes[h2].h));
-}
 
+  // drawRect(h1x1,h1y,h1x2-h1x1,hitboxes[h1].h, BLUE);
+  // drawRect(h2x1,h2y,h2x2-h2x1,hitboxes[h2].h, YELLOW);
+
+  // return ((h1x>h2x && h1x<h2x+hitboxes[h2].w)||(h1x+hitboxes[h1].w>h2x && h1x<h2x+hitboxes[h2].w)) && ((h1y<h2y && h1y>h2y-hitboxes[h2].h)||(h1y-hitboxes[h1].h<h2y && h1y-hitboxes[h1].h>h2y-hitboxes[h2].h));
+  bool x_overlap = (h1x1 >= h2x1 && h1x1 <= h2x2) || (h1x2 >= h2x1 && h1x2 <= h2x2);
+  bool y_overlap = (h1y <= h2y && h1y >= h2y - hitboxes[h2].h) || (h1y - hitboxes[h1].h <= h2y && h1y - hitboxes[h1].h >= h2y - hitboxes[h2].h);
+  bool r=x_overlap&&y_overlap;
+  // if(check_y&&y_overlap)
+  // {
+  //   if(h1y <= h2y && h1y >= h2y - hitboxes[h2].h)
+  //     return 
+  // }
+  // else if(!check_y&&x_overlap)
+  // {
+  //   if(h1x1 >= h2x1 && h1x1 <= h2x2)
+  //   {
+  //     return h2x2-h1x1;
+  //   }
+  //   else if(h1x2 >= h2x1 && h1x2 <= h2x2)
+  //   {
+  //     return h2x2-h1x2;
+  //   }
+  // }
+  
+  // if(x_overlap)
+  //   printf("x_overlap\n");
+  // if(y_overlap)
+  //   printf("y_overlap\n");
+  // if(r)
+  //   printf("overlapping=true\n");
+  return r;
+}
 
 #define LED 25
 short getKey(bool p1)
@@ -358,17 +563,62 @@ short getKey(bool p1)
   else
     (i = -1);
   gpio_put(LED, i == -1 ? false : true);
-  if(p1)
+  if (p1)
     return i;
-  switch(i)
+  switch (i)
   {
-    case 11:
-      return 6;
-    case 0:
-      return 5;
-    default:
-      return i-6;
+  case 11:
+    return 6;
+  case 0:
+    return 5;
+  default:
+    return i - 6;
   }
+}
+
+void handle_input(short tracked_key, short i)
+{
+  switch (tracked_key)
+  {
+  case 4: // left
+  {
+    players[i].x -= 5;
+    if(isOverlapping(0,0,i))
+      players[i].x += 5;
+    players[i].state = players[i].flip ? 3 : 2;
+    break;
+  }
+  case 6: // right
+  {
+    players[i].x += 5;
+    if(isOverlapping(0,0,i))
+      players[i].x -= 5;
+    players[i].state = players[i].flip ? 2 : 3;
+    break;
+  }
+  case 1: // attack
+  {
+    players[i].state = 1; // attack state
+    players[i].frame = 0;
+    break;
+  }
+  case 2: //jump
+  {
+    players[i].state = 5; // jump state
+    players[i].frame = 0;
+    players[i].falling=false;
+    break;
+  }
+  default:
+  {
+    players[i].state = 0; // idle state
+    break;
+  }
+  }
+}
+
+void jump_state_machine(int i)
+{
 }
 
 // Animation on core 0
@@ -383,7 +633,9 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
   fillRect(0, 0, 640, 480, WHITE); // set background to white
   // draw background at the start (initialize)
-  drawGround();
+  // drawGround();
+  drawSprite(rooftop, rooftop_len, true, 162, 480, BLACK);
+  drawSprite(rooftop, rooftop_len, false, 478, 480, BLACK);
   // drawBackground();
 
   // bool skipped0=false;
@@ -395,9 +647,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     // Measure time at start of thread
     begin_time = time_us_32();
 
-    // slow approach - redraw background every frame
-    // drawBackground(); 
-
     for (int i = 0; i < NUM_PLAYERS; i++)
     {
       drawFrame(&players[i], WHITE); // player 1, erase previous frame
@@ -408,47 +657,13 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       case 2: // Forward
       case 3: // Backward
       {
-        tracked_key = getKey(i==0);
-        //printf("%d\n", tracked_key);
-        switch (tracked_key)
-        {
-        // case 2: // up
-        // {
-        //   p1.y-=1;
-        //   break;
-        // }
-        // case 5: // down
-        // {
-        //   p1.y+=1;
-        //   break;
-        // }
-        case 4: // left
-        {
-          players[i].x -= 5;
-          players[i].state = players[i].flip?3:2;
-          break;
-        }
-        case 6: // right
-        {
-          players[i].x += 5;
-          players[i].state = players[i].flip?2:3;
-          break;
-        }
-        case 1: // attack
-        {
-          players[i].state = 1; // attack state
-          players[i].frame = 0;
-          break;
-        }
-        default:
-        {
-          players[i].state = 0; // idle state
-          break;
-        }
-        }
+        tracked_key = getKey(i == 0);
+        // printf("%d\n", tracked_key);
+        handle_input(tracked_key, i); // get keypresses
+
         players[i].frame++;
         // if (players[i].state == 0 && players[i].frame > 4 || ((players[i].state == 2 || players[i].state == 3) && players[i].frame > 6))
-        if(players[i].frame >= players[i].animations[players[i].state].len)
+        if (players[i].frame >= players[i].animations[players[i].state].len)
           players[i].frame = 0;
         break;
       }
@@ -457,17 +672,24 @@ static PT_THREAD(protothread_anim(struct pt *pt))
         players[i].frame++;
         if (players[i].frame > 7)
           players[i].frame = 0;
-      
-        //check if attack active
-        if(players[i].frame == active_frames[players[i].state])
+
+        // check if attack active
+        if (players[i].frame == active_frames[players[i].state])
         {
 
-          if(isOverlapping(1,0,i)) 
+          if (isOverlapping(1, 0, i))
           {
-            players[!i].frame = 0;
-            players[!i].state = 4; // hurt state
-            players[!i].hp -= 10; // hurt state
+            //check back 2 block 
+            if(players[!i].state == 3)
+            {
 
+            }
+            else
+            {
+              players[!i].frame = 0;
+              players[!i].state = 4; // hurt state
+              players[!i].hp -= 10;  // hurt state
+            }
           }
         }
 
@@ -484,6 +706,77 @@ static PT_THREAD(protothread_anim(struct pt *pt))
           players[i].state = 0; // back to idle state
         break;
       }
+
+      case 5: // jump state - includes a substate machine
+      {
+        // if (players[i].frame < 6)
+        if(!players[i].falling && players[i].y>JUMP_HEIGHT) 
+        {
+          players[i].y -= 40;
+          while(isOverlapping(0,0,i))
+          {
+            players[i].y += 1;
+          }
+        }
+          
+        // else if (players[i].frame < 11)
+        else if(players[i].y<=JUMP_HEIGHT)
+        {
+          players[i].falling=true;
+          players[i].y += 40;
+          while(isOverlapping(0,0,i)||players[i].y>480-GROUND_HEIGHT)
+          {
+            players[i].y -= 1;
+          }
+        }
+        else if(players[i].falling && players[i].y<480-GROUND_HEIGHT)
+        {
+          players[i].y += 40;
+          while(isOverlapping(0,0,i)||players[i].y>480-GROUND_HEIGHT)
+          {
+            players[i].y -= 1;
+          }
+        }
+        else
+        {
+          players[i].state = 0; // back to idle state
+          players[i].frame = 0;
+        }
+        // players[i].frame++;
+
+        tracked_key = getKey(i == 0);
+        switch (tracked_key)
+        {
+          case 4: // left
+          {
+            players[i].x -= 20;
+            if(isOverlapping(0,0,i))
+              players[i].x += 20;
+            break;
+          }
+          case 6: // right
+          {
+            players[i].x += 20;
+            if(isOverlapping(0,0,i))
+              players[i].x -= 20;
+            break;
+          }
+          case 1: // attack
+          {
+            // players[i].state = 1; // attack state
+            // players[i].frame = 0;
+            break;
+          }
+          default:
+          {
+            break;
+          }
+        }
+
+        // jump substate machine here
+
+        break;
+      }
       default:
       {
         break;
@@ -493,13 +786,18 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       drawFrame(&players[i], BLACK); // player 1, draw current frame
     }
 
+    drawSprite(clouds, clouds_len, true, 320, 200, BLACK);
 
-    if (players[0].hp <= 0 || players[1].hp <= 0) {
-      setCursor(SCREEN_WIDTH/2 - 200, SCREEN_HEIGHT/2 - 200);
+    if (players[0].hp <= 0 || players[1].hp <= 0)
+    {
+      setCursor(SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 200);
       setTextSize(4);
-      if (players[0].hp <= 0) {
+      if (players[0].hp <= 0)
+      {
         writeString("PLAYER 2 WINS!");
-      } else {
+      }
+      else
+      {
         writeString("PLAYER 1 WINS!");
       }
     }
@@ -536,9 +834,7 @@ static PT_THREAD(protothread_core1(struct pt *pt))
     begin_time = time_us_32();
     drawHealthBars();
 
-    
     spare_time = FRAME_RATE - (time_us_32() - begin_time);
-
 
     // yield for necessary amount of time
     PT_YIELD_usec(spare_time);
@@ -674,6 +970,54 @@ int main()
   gpio_pull_down((BASE_KEYPAD_PIN + 6));
 
   // pt_add_thread(protothread_keypad) ;
+
+  //////////////// SOUND ////////////////
+  // Initialize SPI channel (channel, baud rate set to 20MHz)
+  spi_init(SPI_PORT, 20000000);
+  // Format (channel, data bits per transfer, polarity, phase, order)
+  spi_set_format(SPI_PORT, 16, 0, 0, 0);
+
+  // Map SPI signals to GPIO ports
+  gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
+  gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
+  gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
+  gpio_set_function(PIN_CS, GPIO_FUNC_SPI);
+
+  // Map LDAC pin to GPIO port, hold it low (could alternatively tie to GND)
+  gpio_init(LDAC);
+  gpio_set_dir(LDAC, GPIO_OUT);
+  gpio_put(LDAC, 0);
+
+  // Setup the ISR-timing GPIO
+  gpio_init(ISR_GPIO);
+  gpio_set_dir(ISR_GPIO, GPIO_OUT);
+  gpio_put(ISR_GPIO, 0);
+
+  // Map LED to GPIO port, make it low
+  gpio_init(LED);
+  gpio_set_dir(LED, GPIO_OUT);
+  gpio_put(LED, 0);
+
+  // set up increments for calculating bow envelope
+  attack_inc = divfix(max_amplitude, int2fix15(ATTACK_TIME));
+  decay_inc = divfix(max_amplitude, int2fix15(DECAY_TIME));
+
+  // Build the sine lookup table
+  // scaled to produce values between 0 and 4096 (for 12-bit DAC)
+  int ii;
+  for (ii = 0; ii < sine_table_size; ii++)
+  {
+    sin_table[ii] = float2fix15(2047 * sin((float)ii * 6.283 / (float)sine_table_size));
+  }
+
+  // Enable the interrupt for the alarm (we're using Alarm 0)
+  hw_set_bits(&timer_hw->inte, 1u << ALARM_NUM);
+  // Associate an interrupt handler with the ALARM_IRQ
+  irq_set_exclusive_handler(ALARM_IRQ, alarm_irq);
+  // Enable the alarm interrupt
+  irq_set_enabled(ALARM_IRQ, true);
+  // Write the lower 32 bits of the target time to the alarm register, arming it.
+  timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
 
   // start scheduler
   pt_schedule_start;
