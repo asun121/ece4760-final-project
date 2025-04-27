@@ -42,8 +42,6 @@
 #include "hardware/adc.h"
 #include "hardware/sync.h"
 #include "sprites.h"
-#include "clouds.h"
-#include "rooftop.h"
 
 // Include protothreads
 #include "pt_cornell_rp2040_v1_3.h"
@@ -122,7 +120,7 @@ unsigned int button = 0x70;
 #define STONE_COLOR ORANGE
 
 #define GROUND_HEIGHT 60
-#define JUMP_HEIGHT 480-GROUND_HEIGHT-240
+#define GROUND_LEVEL 480-GROUND_HEIGHT
 
 //=========Sound==========
 
@@ -330,21 +328,6 @@ void drawBackground()
   drawLine(0, groundTop, SCREEN_WIDTH, groundTop, DARK_GRASS);
 }
 
-const short clouds_len = 479;
-const short rooftop_len = 741;
-
-// Draw background components (i.e. clouds, platform)
-void drawBackgroundComponent(const short arr[][2], short arr_len, short x_offset, short y_offset) {
-  for (short i = 0; i < arr_len; i++) {
-    short x = x_offset + (arr[i][0] << 2);
-    short y = y_offset - (arr[i][1] << 2);
-    fillRect(x, y, 4, 4, WHITE);
-
-    // fillRect(arr[i][0] << 2, arr[i][1] << 2, 4, 4, WHITE);
-  }
-}
-
-
 static uint32_t last_update_time = 0;
 static uint32_t elapsed_time_sec = 0;
 
@@ -375,10 +358,7 @@ typedef struct
   short h;
 } hitbox;
 
-// const hitbox hitboxes[] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}; // possible bounding hitboxes
-// const hitbox hitboxes[] = {{12,40,25,40}};
-//{-7*4,32*4,(-7--28)*4 (18-32)*4}
-const hitbox hitboxes[] = {{28, 160, 60, 160}, {-28, 128, 84, 56}}; // 0: Default hitbox, 1:
+const hitbox hitboxes[] = {{28, 160, 60, 160}, {-28, 128, 84, 56}, {28, 0, 60, 0}, {28, 160, 60, 0}, {28, 0, 60, 20}}; // 0: stand body, 1: kick leg, 2: stand feet, 4: stand head, 5: land hit
 const short active_frames[] = {-1, 5, -1, -1};                      // active frames for each attack
 
 #define NUM_PLAYERS 2
@@ -387,7 +367,7 @@ const short active_frames[] = {-1, 5, -1, -1};                      // active fr
 // player p2 = {500, 480 / 2, true, 0, 0, 0, 100, default_character};
 
 // player *players[2] = {&p1, &p2}; // array of players
-player players[2] = {{640 / 4, SCREEN_HEIGHT - GROUND_HEIGHT, true, 0, 0, 0, 100, E, false}, {640 * 3 / 4, SCREEN_HEIGHT - GROUND_HEIGHT, false, 0, 0, 0, 100, A, false}};
+player players[2] = {{640 / 4, SCREEN_HEIGHT - GROUND_HEIGHT, false, 0, 0, 0, 100, E, false}, {640 * 3 / 4, SCREEN_HEIGHT - GROUND_HEIGHT, true, 0, 0, 0, 100, A, false}};
 
 // typedef struct
 // {
@@ -431,17 +411,19 @@ void drawHealthBars()
 
 void drawSprite(const short arr[][2], short arr_len, bool flip, short x, short y, char color)
 {
-  if (flip)
+  if (!flip)
     // for (short i = 0; i < arr_len; i++)
     //   drawPixel(x - arr[i][0], y - arr[i][1], color);
     for (short i = 0; i < arr_len; i++)
       //   // fillRect(x-scale*arr[i][0],y-scale*arr[i][1],scale,scale,color);
-      fillRect(x - ((arr[i][0]) << 2), y - ((arr[i][1]) << 2), 4, 4, color);
+      // fillRect(x - ((arr[i][0]) << 2), y - ((arr[i][1]) << 2), 4, 4, color);
+      fillRect(x - arr[i][0], y - arr[i][1], 4, 4, color);
   else
     // for (short i = 0; i < arr_len; i++)
     //   drawPixel(x + arr[i][0], y - arr[i][1], color);
     for (short i = 0; i < arr_len; i++)
-      fillRect(x + ((arr[i][0]) << 2), y - ((arr[i][1]) << 2), 4, 4, color);
+      // fillRect(x + ((arr[i][0]) << 2), y - ((arr[i][1]) << 2), 4, 4, color);
+      fillRect(x + arr[i][0], y - arr[i][1], 4, 4, color);
 }
 
 void drawFrame(player *p, char color)
@@ -466,13 +448,15 @@ bool isOverlapping(short h1, short h2, short attacker)
 
   short h1y = players[attacker].y - hitboxes[h1].y_off;
   short h2y = players[!attacker].y - hitboxes[h2].y_off;
+  // short h1y = players[attacker].y;
+  // short h2y = players[!attacker].y;
 
   short h1x1;
   short h1x2;
   short h2x1;
   short h2x2;
 
-  if (players[attacker].flip)
+  if (!players[attacker].flip)
   {
     h1x1 = h1xL;
     h1x2 = h1xL + hitboxes[h1].w;
@@ -482,7 +466,7 @@ bool isOverlapping(short h1, short h2, short attacker)
     h1x1 = h1xR;
     h1x2 = h1xR + hitboxes[h1].w;
   }
-  if (players[!attacker].flip)
+  if (!players[!attacker].flip)
   {
     h2x1 = h2xL;
     h2x2 = h2xL + hitboxes[h2].w;
@@ -493,34 +477,24 @@ bool isOverlapping(short h1, short h2, short attacker)
     h2x2 = h2xR + hitboxes[h2].w;
   }
 
-  // drawRect(h1x1,h1y,h1x2-h1x1,hitboxes[h1].h, BLUE);
-  // drawRect(h2x1,h2y,h2x2-h2x1,hitboxes[h2].h, YELLOW);
-
   // return ((h1x>h2x && h1x<h2x+hitboxes[h2].w)||(h1x+hitboxes[h1].w>h2x && h1x<h2x+hitboxes[h2].w)) && ((h1y<h2y && h1y>h2y-hitboxes[h2].h)||(h1y-hitboxes[h1].h<h2y && h1y-hitboxes[h1].h>h2y-hitboxes[h2].h));
   bool x_overlap = (h1x1 >= h2x1 && h1x1 <= h2x2) || (h1x2 >= h2x1 && h1x2 <= h2x2);
-  bool y_overlap = (h1y <= h2y && h1y >= h2y - hitboxes[h2].h) || (h1y - hitboxes[h1].h <= h2y && h1y - hitboxes[h1].h >= h2y - hitboxes[h2].h);
+  bool y_overlap = (h1y >= h2y && h1y <= h2y + hitboxes[h2].h) || (h1y + hitboxes[h1].h >= h2y && h1y + hitboxes[h1].h <= h2y - hitboxes[h2].h);
   bool r=x_overlap&&y_overlap;
-  // if(check_y&&y_overlap)
+  
+  // if(r)
   // {
-  //   if(h1y <= h2y && h1y >= h2y - hitboxes[h2].h)
-  //     return 
-  // }
-  // else if(!check_y&&x_overlap)
-  // {
-  //   if(h1x1 >= h2x1 && h1x1 <= h2x2)
-  //   {
-  //     return h2x2-h1x1;
-  //   }
-  //   else if(h1x2 >= h2x1 && h1x2 <= h2x2)
-  //   {
-  //     return h2x2-h1x2;
-  //   }
+  //   drawRect(h1x1,h1y,h1x2-h1x1,hitboxes[h1].h, BLUE);
+  //   drawRect(h2x1,h2y,h2x2-h2x1,hitboxes[h2].h, YELLOW);
   // }
   
   // if(x_overlap)
   //   printf("x_overlap\n");
   // if(y_overlap)
-  //   printf("y_overlap\n");
+  // {
+  //   printf("y_overlap:%d, %d, %d, %d\n", h1y, h1y-hitboxes[h1].h, h2y, h2y-hitboxes[h2].h);
+  // }
+    
   // if(r)
   //   printf("overlapping=true\n");
   return r;
@@ -576,24 +550,54 @@ short getKey(bool p1)
   }
 }
 
+void handle_input_floating(short i)
+{
+  short tracked_key = getKey(i == 0);
+  switch (tracked_key)
+  {
+    case 4: // left
+    {
+      bool overlap_before=isOverlapping(0,0,i);
+      players[i].x -= 20;
+      if(!overlap_before&&isOverlapping(0,0,i))
+        players[i].x += 20;
+      break;
+    }
+    case 6: // right
+    {
+      bool overlap_before=isOverlapping(0,0,i);
+      players[i].x += 20;
+      if(!overlap_before&&isOverlapping(0,0,i))
+        players[i].x -= 20;
+      break;
+    }
+    default:
+    {
+      break;
+    }
+  }
+}
+
 void handle_input(short tracked_key, short i)
 {
   switch (tracked_key)
   {
   case 4: // left
   {
+    bool overlap_before=isOverlapping(0,0,i);
     players[i].x -= 5;
-    if(isOverlapping(0,0,i))
+    if(!overlap_before&&isOverlapping(0,0,i))
       players[i].x += 5;
-    players[i].state = players[i].flip ? 3 : 2;
+    players[i].state = players[i].flip ? 2 : 3;
     break;
   }
   case 6: // right
   {
+    bool overlap_before=isOverlapping(0,0,i);
     players[i].x += 5;
-    if(isOverlapping(0,0,i))
+    if(!overlap_before&&isOverlapping(0,0,i))
       players[i].x -= 5;
-    players[i].state = players[i].flip ? 2 : 3;
+    players[i].state = players[i].flip ? 3 : 2;
     break;
   }
   case 1: // attack
@@ -606,7 +610,6 @@ void handle_input(short tracked_key, short i)
   {
     players[i].state = 5; // jump state
     players[i].frame = 0;
-    players[i].falling=false;
     break;
   }
   default:
@@ -615,10 +618,6 @@ void handle_input(short tracked_key, short i)
     break;
   }
   }
-}
-
-void jump_state_machine(int i)
-{
 }
 
 // Animation on core 0
@@ -632,14 +631,11 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   static int spare_time;
 
   fillRect(0, 0, 640, 480, WHITE); // set background to white
-  // draw background at the start (initialize)
-  // drawGround();
-  drawSprite(rooftop, rooftop_len, true, 162, 480, BLACK);
-  drawSprite(rooftop, rooftop_len, false, 478, 480, BLACK);
-  // drawBackground();
 
-  // bool skipped0=false;
-  // bool skipped1=false;
+  // draw background at the start (initialize)
+  drawSprite(rooftop, 741, false, 322, 480, BLACK);
+  drawSprite(rooftop, 741, true, 318, 480, BLACK);
+
 
   while (1)
   {
@@ -649,144 +645,143 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     for (int i = 0; i < NUM_PLAYERS; i++)
     {
-      drawFrame(&players[i], WHITE); // player 1, erase previous frame
-      // Player 1 logic, add loop for player 2
+      drawFrame(&players[i], WHITE); // player i, erase previous frame
+
       switch (players[i].state)
       {
-      case 0: // Idle
-      case 2: // Forward
-      case 3: // Backward
-      {
-        tracked_key = getKey(i == 0);
-        // printf("%d\n", tracked_key);
-        handle_input(tracked_key, i); // get keypresses
-
-        players[i].frame++;
-        // if (players[i].state == 0 && players[i].frame > 4 || ((players[i].state == 2 || players[i].state == 3) && players[i].frame > 6))
-        if (players[i].frame >= players[i].animations[players[i].state].len)
-          players[i].frame = 0;
-        break;
-      }
-      case 1: // Attack
-      {
-        players[i].frame++;
-        if (players[i].frame > 7)
-          players[i].frame = 0;
-
-        // check if attack active
-        if (players[i].frame == active_frames[players[i].state])
+        case 0: // Idle
+        case 2: // Forward
+        case 3: // Backward
         {
+          players[i].frame++;
+          if (players[i].frame >= players[i].animations[players[i].state].len)
+            players[i].frame = 0;
 
-          if (isOverlapping(1, 0, i))
+          //start falling if above ground && feet not on the other player
+          if(players[i].y<GROUND_LEVEL&&!isOverlapping(2,0,i))
           {
-            //check back 2 block 
-            if(players[!i].state == 3)
+            players[i].state=6;
+            players[i].frame=0;
+            break;
+          }
+
+          tracked_key = getKey(i == 0);
+          handle_input(tracked_key, i); // get keypresses
+          break;
+        }
+        case 1: // kick
+        {
+          players[i].frame++;
+          if (players[i].frame > 7)
+            players[i].frame = 0;
+
+          // check if attack active
+          if (players[i].frame == active_frames[players[i].state])
+          {
+            if (isOverlapping(1, 0, i))
             {
+              //check back 2 block 
+              if(players[!i].state == 3)
+              {
 
+              }
+              else
+              {
+                players[!i].frame = 0;
+                players[!i].state = 4; // hurt state
+                players[!i].hp -= 10;  // hurt state
+              }
             }
-            else
+          }
+
+          if (players[i].frame == 0)
+            players[i].state = 0; // back to idle state
+          break;
+        }
+        case 4: // hurt state
+        {
+          players[i].frame++;
+          if (players[i].frame > 3)
+          {
+            players[i].frame = 0;
+            players[i].state = 0; // back to idle state
+          }
+          break;
+        }
+        case 5: // jump state
+        {
+          players[i].frame++;
+          if(players[i].frame > 1)
+          {
+            bool overlap_before=isOverlapping(3,0,i);//this.head vs. other.body
+            players[i].y -= 40;
+            bool overlap_after=isOverlapping(3,0,i);//this.head vs. other.body
+            
+            if(!overlap_before&&overlap_after)
+              players[i].y=players[!i].y+hitboxes[0].h;
+            handle_input_floating(i);
+          }
+          if (players[i].frame >= players[i].animations[5].len)
+          {
+            players[i].frame = 0;
+            players[i].state = 6; // fall state
+          }
+          break;
+        }
+        case 6: //fall state
+        {
+          players[i].y+=40;
+          if(isOverlapping(2,0,i)&&players[i].y<players[!i].y) //this.feet overlaps other.body && above other.feet
+          {
+            players[i].y=players[!i].y-hitboxes[0].h;
+            players[i].frame=0;
+            players[i].state=7; // land state
+            break;
+          }  
+          else if(players[i].y>=GROUND_LEVEL) //this.feet vs. ground
+          {
+            players[i].y=GROUND_LEVEL;
+            players[i].frame=0;
+            players[i].state=7; // land state
+            break;
+          }
+          handle_input_floating(i);
+          break;
+        }
+        case 7: //land state
+        {
+          players[i].frame++;
+          if(players[i].frame==2)
+          {
+            if (isOverlapping(4, 0, i))
             {
-              players[!i].frame = 0;
-              players[!i].state = 4; // hurt state
-              players[!i].hp -= 10;  // hurt state
+              //check back 2 block 
+              if(players[!i].state != 3)
+              {
+                players[!i].frame = 0;
+                players[!i].state = 4; // hurt state
+                players[!i].hp -= 10;  // hurt state
+              }
             }
           }
+          if (players[i].frame >= players[i].animations[7].len)
+          {
+            players[i].frame = 0;
+            players[i].state = 0; // idle state
+          }
+          break;
         }
-
-        if (players[i].frame == 0)
-          players[i].state = 0; // back to idle state
-        break;
-      }
-      case 4: // hurt state
-      {
-        players[i].frame++;
-        if (players[i].frame > 3)
-          players[i].frame = 0;
-        if (players[i].frame == 0)
-          players[i].state = 0; // back to idle state
-        break;
-      }
-
-      case 5: // jump state - includes a substate machine
-      {
-        // if (players[i].frame < 6)
-        if(!players[i].falling && players[i].y>JUMP_HEIGHT) 
+        default:
         {
-          players[i].y -= 40;
-          while(isOverlapping(0,0,i))
-          {
-            players[i].y += 1;
-          }
+          break;
         }
-          
-        // else if (players[i].frame < 11)
-        else if(players[i].y<=JUMP_HEIGHT)
-        {
-          players[i].falling=true;
-          players[i].y += 40;
-          while(isOverlapping(0,0,i)||players[i].y>480-GROUND_HEIGHT)
-          {
-            players[i].y -= 1;
-          }
-        }
-        else if(players[i].falling && players[i].y<480-GROUND_HEIGHT)
-        {
-          players[i].y += 40;
-          while(isOverlapping(0,0,i)||players[i].y>480-GROUND_HEIGHT)
-          {
-            players[i].y -= 1;
-          }
-        }
-        else
-        {
-          players[i].state = 0; // back to idle state
-          players[i].frame = 0;
-        }
-        // players[i].frame++;
-
-        tracked_key = getKey(i == 0);
-        switch (tracked_key)
-        {
-          case 4: // left
-          {
-            players[i].x -= 20;
-            if(isOverlapping(0,0,i))
-              players[i].x += 20;
-            break;
-          }
-          case 6: // right
-          {
-            players[i].x += 20;
-            if(isOverlapping(0,0,i))
-              players[i].x -= 20;
-            break;
-          }
-          case 1: // attack
-          {
-            // players[i].state = 1; // attack state
-            // players[i].frame = 0;
-            break;
-          }
-          default:
-          {
-            break;
-          }
-        }
-
-        // jump substate machine here
-
-        break;
       }
-      default:
-      {
-        break;
-      }
-      }
+      players[i].flip=players[i].x>players[!i].x;
 
-      drawFrame(&players[i], BLACK); // player 1, draw current frame
+      drawFrame(&players[i], BLACK); // player i, draw current frame
     }
 
-    drawSprite(clouds, clouds_len, true, 320, 200, BLACK);
+    drawSprite(clouds, 479, false, 320, 200, BLACK);
 
     if (players[0].hp <= 0 || players[1].hp <= 0)
     {
