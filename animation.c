@@ -347,7 +347,7 @@ typedef struct
   short hp;
   Anim *animations;
   
-  bool falling;
+  short body;
 } player;
 
 typedef struct
@@ -358,7 +358,8 @@ typedef struct
   short h;
 } hitbox;
 
-const hitbox hitboxes[] = {{28, 160, 60, 160}, {-28, 128, 84, 56}, {28, 0, 60, 0}, {28, 160, 60, 0}, {28, 0, 60, 20}}; // 0: stand body, 1: kick leg, 2: stand feet, 4: stand head, 5: land hit
+ // hitboxes:   0: stand body, 1: stand hit, 2: stand feet, 3: stand head, 4: drop hit, 5: crouch body, 6: crouch hit, 7: upward hit
+const hitbox hitboxes[] = {{28, 160, 60, 160}, {-28, 128, 84, 56}, {28, 0, 60, 0}, {28, 160, 60, 0}, {28, 0, 60, 20}, {28, 124, 60, 124}, {-28, 28, 72, 28}, {8, 200, 32, 40}};
 const short active_frames[] = {-1, 5, -1, -1};                      // active frames for each attack
 
 #define NUM_PLAYERS 2
@@ -367,7 +368,7 @@ const short active_frames[] = {-1, 5, -1, -1};                      // active fr
 // player p2 = {500, 480 / 2, true, 0, 0, 0, 100, default_character};
 
 // player *players[2] = {&p1, &p2}; // array of players
-player players[2] = {{640 / 4, SCREEN_HEIGHT - GROUND_HEIGHT, false, 0, 0, 0, 100, E, false}, {640 * 3 / 4, SCREEN_HEIGHT - GROUND_HEIGHT, true, 0, 0, 0, 100, A, false}};
+player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 100, E, 0}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 100, A, 0}};
 
 // typedef struct
 // {
@@ -484,8 +485,8 @@ bool isOverlapping(short h1, short h2, short attacker)
   
   // if(r)
   // {
-  //   drawRect(h1x1,h1y,h1x2-h1x1,hitboxes[h1].h, BLUE);
-  //   drawRect(h2x1,h2y,h2x2-h2x1,hitboxes[h2].h, YELLOW);
+    // drawRect(h1x1,h1y,h1x2-h1x1,hitboxes[h1].h, BLUE);
+    // drawRect(h2x1,h2y,h2x2-h2x1,hitboxes[h2].h, YELLOW);
   // }
   
   // if(x_overlap)
@@ -496,7 +497,7 @@ bool isOverlapping(short h1, short h2, short attacker)
   // }
     
   // if(r)
-  //   printf("overlapping=true\n");
+  //   printf("overlap\n");
   return r;
 }
 
@@ -557,17 +558,17 @@ void handle_input_floating(short i)
   {
     case 4: // left
     {
-      bool overlap_before=isOverlapping(0,0,i);
+      bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
       players[i].x -= 20;
-      if(!overlap_before&&isOverlapping(0,0,i))
+      if(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i))
         players[i].x += 20;
       break;
     }
     case 6: // right
     {
-      bool overlap_before=isOverlapping(0,0,i);
+      bool overlap_before=isOverlapping(players[i].body, players[!i].body, i);
       players[i].x += 20;
-      if(!overlap_before&&isOverlapping(0,0,i))
+      if(!overlap_before&&isOverlapping(players[i].body, players[!i].body, i))
         players[i].x -= 20;
       break;
     }
@@ -584,25 +585,37 @@ void handle_input(short tracked_key, short i)
   {
   case 4: // left
   {
-    bool overlap_before=isOverlapping(0,0,i);
+    bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
     players[i].x -= 5;
-    if(!overlap_before&&isOverlapping(0,0,i))
+    if(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i))
       players[i].x += 5;
     players[i].state = players[i].flip ? 2 : 3;
     break;
   }
   case 6: // right
   {
-    bool overlap_before=isOverlapping(0,0,i);
+    bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
     players[i].x += 5;
-    if(!overlap_before&&isOverlapping(0,0,i))
+    if(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i))
       players[i].x -= 5;
     players[i].state = players[i].flip ? 3 : 2;
     break;
   }
-  case 1: // attack
+  case 5: // down
   {
-    players[i].state = 1; // attack state
+    players[i].frame = 0;
+    players[i].state = 8; //crouch state;
+    break;
+  }
+  case 3: //upward punch
+  {
+    players[i].frame = 0;
+    players[i].state = 10; 
+    break;
+  }
+  case 1: // kick
+  {
+    players[i].state = players[i].state==8?9:1; // crouch=>crouch attack, else kick
     players[i].frame = 0;
     break;
   }
@@ -643,12 +656,15 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     // Measure time at start of thread
     begin_time = time_us_32();
 
+    players[0].body = players[0].state==8||players[0].state==9? 5:0;// crouch body if crouch OR crouch attack, stand body otherwise
+    players[1].body = players[1].state==8||players[1].state==9? 5:0;// crouch body if crouch OR crouch attack, stand body otherwise
     for (int i = 0; i < NUM_PLAYERS; i++)
     {
       drawFrame(&players[i], WHITE); // player i, erase previous frame
 
       switch (players[i].state)
       {
+        case 8: // crouch
         case 0: // Idle
         case 2: // Forward
         case 3: // Backward
@@ -658,7 +674,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
             players[i].frame = 0;
 
           //start falling if above ground && feet not on the other player
-          if(players[i].y<GROUND_LEVEL&&!isOverlapping(2,0,i))
+          if(players[i].y<GROUND_LEVEL&&!isOverlapping(2,players[!i].body,i))
           {
             players[i].state=6;
             players[i].frame=0;
@@ -669,7 +685,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
           handle_input(tracked_key, i); // get keypresses
           break;
         }
-        case 1: // kick
+        case 1: // stand attack
         {
           players[i].frame++;
           if (players[i].frame > 7)
@@ -678,7 +694,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
           // check if attack active
           if (players[i].frame == active_frames[players[i].state])
           {
-            if (isOverlapping(1, 0, i))
+            if (isOverlapping(1, players[!i].body, i))
             {
               //check back 2 block 
               if(players[!i].state == 3)
@@ -698,6 +714,54 @@ static PT_THREAD(protothread_anim(struct pt *pt))
             players[i].state = 0; // back to idle state
           break;
         }
+        case 9: // crouch attack
+        {
+          players[i].frame++;
+          if (players[i].frame >= players[i].animations[9].len)
+          {
+            players[i].frame = 0;
+            players[i].state = 8; //back to crouch
+          }
+          // check if attack active
+          if (players[i].frame == 2)
+          {
+            if (isOverlapping(6, players[!i].body, i)) 
+            {
+              //check crouch block 
+              if(players[!i].state == 8)
+              {
+                
+              }
+              else
+              {
+                players[!i].frame = 0;
+                players[!i].state = 4; // hurt state
+                players[!i].hp -= 10;  // hurt state
+              }
+            }
+          }
+          break;
+        }
+        case 10: // upward attack
+        {
+          players[i].frame++;
+          if (players[i].frame >= players[i].animations[10].len)
+          {
+            players[i].frame = 0;
+            players[i].state = 0; //back to idle
+          }
+          // check if attack active
+          if (players[i].frame == 3)
+          {
+            if (isOverlapping(7, players[!i].body, i))
+            {
+              players[!i].frame = 0;
+              players[!i].state = 4; // hurt state
+              players[!i].hp -= 10;  // hurt state
+            }
+          }
+          break;
+        }
         case 4: // hurt state
         {
           players[i].frame++;
@@ -713,9 +777,9 @@ static PT_THREAD(protothread_anim(struct pt *pt))
           players[i].frame++;
           if(players[i].frame > 1)
           {
-            bool overlap_before=isOverlapping(3,0,i);//this.head vs. other.body
+            bool overlap_before=isOverlapping(3,players[!i].body,i);//this.head vs. other.body
             players[i].y -= 40;
-            bool overlap_after=isOverlapping(3,0,i);//this.head vs. other.body
+            bool overlap_after=isOverlapping(3,players[!i].body,i);//this.head vs. other.body
             
             if(!overlap_before&&overlap_after)
               players[i].y=players[!i].y+hitboxes[0].h;
@@ -731,9 +795,9 @@ static PT_THREAD(protothread_anim(struct pt *pt))
         case 6: //fall state
         {
           players[i].y+=40;
-          if(isOverlapping(2,0,i)&&players[i].y<players[!i].y) //this.feet overlaps other.body && above other.feet
+          if(isOverlapping(2,players[!i].body,i)&&players[i].y<players[!i].y) //this.feet overlaps other.body && above other.feet
           {
-            players[i].y=players[!i].y-hitboxes[0].h;
+            players[i].y=players[!i].y-hitboxes[players[!i].body].h;
             players[i].frame=0;
             players[i].state=7; // land state
             break;
@@ -753,10 +817,10 @@ static PT_THREAD(protothread_anim(struct pt *pt))
           players[i].frame++;
           if(players[i].frame==2)
           {
-            if (isOverlapping(4, 0, i))
+            if (isOverlapping(4, players[!i].body, i))
             {
-              //check back 2 block 
-              if(players[!i].state != 3)
+              //check jump block 
+              if(players[!i].state != 5)
               {
                 players[!i].frame = 0;
                 players[!i].state = 4; // hurt state

@@ -167,7 +167,10 @@ Frame A_Jump[7] = {{A_Jump_0,249},{A_Jump_1,256},{A_Jump_2,242},{A_Jump_2,242},{
 Frame A_Land[6] = {{A_Land_0,269},{A_Land_2,252},{A_Land_3,244},{A_Jump_0,249},{A_Jump_1,256},{A_Jump_2,242}};
 Frame E_Land[6] = {{E_Land_0,234},{E_Land_2,203},{E_Land_3,200},{E_Jump_0,212},{E_Jump_1,212},{E_Jump_2,202}};
 
+Frame A_Crouch[1] = {{A_Attack_0_0,251}};
+Frame E_Crouch[1] = {{E_Attack_0_0,203}};
+
 // Characters 
-Anim E[] = {{E_Idle, 5},{E_Attack_1, 8},{E_Forward, 6},{E_Backward, 6},{E_Damage, 4}, {E_Jump, 7}, {E_Float,1}, {E_Land,6}};
-Anim A[] = {{A_Idle, 5},{A_Attack_1, 8},{A_Forward, 6},{A_Backward, 6},{A_Damage, 4}, {A_Jump, 7}, {A_Float,1}, {A_Land,6}};
+Anim E[11] = {{E_Idle, 5},{E_Attack_1, 8},{E_Forward, 6},{E_Backward, 6},{E_Damage, 4}, {E_Jump, 7}, {E_Float,1}, {E_Land,6}, {E_Crouch,1}, {E_Attack_0, 5}, {E_Attack_3, 7}};
+Anim A[11] = {{A_Idle, 5},{A_Attack_1, 8},{A_Forward, 6},{A_Backward, 6},{A_Damage, 4}, {A_Jump, 7}, {A_Float,1}, {A_Land,6}, {A_Crouch,1}, {A_Attack_0, 5}, {A_Attack_3, 7}};
 
