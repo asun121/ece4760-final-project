@@ -121,6 +121,8 @@ unsigned int button = 0x70;
 
 #define GROUND_HEIGHT 60
 #define GROUND_LEVEL 480-GROUND_HEIGHT
+#define GROUND_LEFT 148
+#define GROUND_RIGHT 640-148
 
 //=========Sound==========
 
@@ -592,7 +594,7 @@ void handle_input_floating(short i)
     {
       bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
       players[i].x -= 20;
-      if(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i))
+      if(players[i].x<GROUND_LEFT || (!overlap_before&&isOverlapping(players[i].body,players[!i].body,i)))
         players[i].x += 20;
       break;
     }
@@ -600,7 +602,7 @@ void handle_input_floating(short i)
     {
       bool overlap_before=isOverlapping(players[i].body, players[!i].body, i);
       players[i].x += 20;
-      if(!overlap_before&&isOverlapping(players[i].body, players[!i].body, i))
+      if(players[i].x>GROUND_RIGHT || (!overlap_before&&isOverlapping(players[i].body, players[!i].body, i)))
         players[i].x -= 20;
       break;
     }
@@ -619,7 +621,7 @@ void handle_input(short tracked_key, short i)
   {
     bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
     players[i].x -= 5;
-    if(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i))
+    if(players[i].x<GROUND_LEFT||(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i)))
       players[i].x += 5;
     players[i].state = players[i].flip ? 2 : 3;
     break;
@@ -628,7 +630,7 @@ void handle_input(short tracked_key, short i)
   {
     bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
     players[i].x += 5;
-    if(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i))
+    if(players[i].x>GROUND_RIGHT||(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i)))
       players[i].x -= 5;
     players[i].state = players[i].flip ? 3 : 2;
     break;
@@ -686,6 +688,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     // Measure time at start of thread
     begin_time = time_us_32();
+
+    // drawRect(80, 0 ,640-160, 480, BLACK);
 
     players[0].body = players[0].state==11?-1:players[0].state==8||players[0].state==9? 5:0;// none if dead, crouch body if crouch OR crouch attack, stand body otherwise
     players[1].body = players[1].state==11?-1:players[1].state==8||players[1].state==9? 5:0;// none if dead, crouch body if crouch OR crouch attack, stand body otherwise
