@@ -369,7 +369,7 @@ short clouds_x = 320;
 // player p2 = {500, 480 / 2, true, 0, 0, 0, 100, default_character};
 
 // player *players[2] = {&p1, &p2}; // array of players
-player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 100, E, 0}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 100, A, 0}};
+player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 200, A, 0}};
 
 // typedef struct
 // {
@@ -381,34 +381,20 @@ player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 100, E, 0}, {640 * 
 // Draw health bars for both players
 void drawHealthBars()
 {
-  char hp_text[10]; // Buffer for HP text
-
-  // Player 1 health bar - left side
-  fillRect(20, 20, 200, 20, WHITE);
-  fillRect(20, 20, players[0].hp * 2, 20, BLACK);
-
-  // Clear previous text area before writing new text
-  fillRect(230, 25, 50, 10, WHITE); // Clear P1 text area
-
-  // Display Player 1 (P1) HP value
-  sprintf(hp_text, "HP: %d", players[0].hp);
-  setTextSize(1);
-  setCursor(230, 25);
-  writeString(hp_text);
-
-  // Player 2 (P2) health bar - right side
-  fillRect(420, 20, 200, 20, WHITE);
-  fillRect(420, 20, players[1].hp * 2, 20, BLACK);
-
-  // Clear previous text area
-  fillRect(370, 25, 50, 10, WHITE); // Clear P2 text area
-
-  // Display Player 2 HP value
-  sprintf(hp_text, "HP: %d", players[1].hp);
-  setTextSize(1);
-  setCursor(370, 25); // left of P2 health bar
-  writeString(hp_text);
+  fillRect(12, 20, 4, 16, BLACK); 
+  fillRect(224, 20, 4, 16, BLACK); 
+  fillRect(412, 20, 4, 16, BLACK); //640-20-200-8
+  fillRect(624, 20, 4, 16, BLACK); //640-20+4
+  fillRect(20, 20, players[0].hp, 16, BLACK); 
+  fillRect(620-players[1].hp, 20, players[1].hp, 16, BLACK);
 }
+
+void eraseHP()
+{
+  fillRect(20, 20, 200, 16, WHITE);
+  fillRect(620-200, 20, 200, 16, WHITE);
+}
+
 void drawLooped(const short arr[][2], short arr_len, short x, short y, char color)
 {
   for (short i = 0; i < arr_len; i++)
@@ -423,27 +409,15 @@ void drawLooped(const short arr[][2], short arr_len, short x, short y, char colo
 void drawSprite(const short arr[][2], short arr_len, bool flip, short x, short y, char color)
 {
   if (!flip)
-    // for (short i = 0; i < arr_len; i++)
-    //   drawPixel(x - arr[i][0], y - arr[i][1], color);
     for (short i = 0; i < arr_len; i++)
-      //   // fillRect(x-scale*arr[i][0],y-scale*arr[i][1],scale,scale,color);
-      // fillRect(x - ((arr[i][0]) << 2), y - ((arr[i][1]) << 2), 4, 4, color);
       fillRect(x - arr[i][0], y - arr[i][1], 4, 4, color);
   else
-    // for (short i = 0; i < arr_len; i++)
-    //   drawPixel(x + arr[i][0], y - arr[i][1], color);
     for (short i = 0; i < arr_len; i++)
-      // fillRect(x + ((arr[i][0]) << 2), y - ((arr[i][1]) << 2), 4, 4, color);
       fillRect(x + arr[i][0], y - arr[i][1], 4, 4, color);
 }
 
 void drawFrame(player *p, char color)
 {
-  // drawRect(p->x - ((hitboxes[0].x_off)), p->y - ((hitboxes[0].y_off)), ((hitboxes[0].w)), ((hitboxes[0].h)), GREEN);
-  // if(p->flip)
-  //   drawRect(p->x - ((hitboxes[1].x_off)), p->y - ((hitboxes[1].y_off)), ((hitboxes[1].w)), ((hitboxes[1].h)), RED);
-  // else
-  //   drawRect(p->x + ((hitboxes[1].x_off-hitboxes[1].w)), p->y - ((hitboxes[1].y_off)), ((hitboxes[1].w)), ((hitboxes[1].h)), RED);
   drawSprite(p->animations[p->state].f[p->frame].p, p->animations[p->state].f[p->frame].len, p->flip, p->x, p->y, color);
 }
 
@@ -673,7 +647,9 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     players[0].body = players[0].state==8||players[0].state==9? 5:0;// crouch body if crouch OR crouch attack, stand body otherwise
     players[1].body = players[1].state==8||players[1].state==9? 5:0;// crouch body if crouch OR crouch attack, stand body otherwise
-
+    
+    drawSprite(P1, 13, false, players[0].x, players[0].y, WHITE); //erase previous frame UI
+    drawSprite(P2, 15, false, players[1].x, players[1].y, WHITE); //erase previous frame UI
     // drawLooped(clouds, 479, clouds_x, 480, WHITE); //erase previous clouds
     drawLooped(clouds2, 479, clouds_x, 480, WHITE); //erase previous clouds
     clouds_x++;
@@ -726,7 +702,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
               {
                 players[!i].frame = 0;
                 players[!i].state = 4; // hurt state
-                players[!i].hp -= 10;  // hurt state
+                players[!i].hp -= 20;  // hurt state
+                eraseHP();
               }
             }
           }
@@ -757,7 +734,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
               {
                 players[!i].frame = 0;
                 players[!i].state = 4; // hurt state
-                players[!i].hp -= 10;  // hurt state
+                players[!i].hp -= 20;  // hurt state
+                eraseHP();
               }
             }
           }
@@ -778,7 +756,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
             {
               players[!i].frame = 0;
               players[!i].state = 4; // hurt state
-              players[!i].hp -= 10;  // hurt state
+              players[!i].hp -= 20;  // hurt state
+              eraseHP();
             }
           }
           break;
@@ -845,7 +824,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
               {
                 players[!i].frame = 0;
                 players[!i].state = 4; // hurt state
-                players[!i].hp -= 10;  // hurt state
+                players[!i].hp -= 20;  // hurt state
+                eraseHP();
               }
             }
           }
@@ -865,7 +845,12 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
       drawFrame(&players[i], BLACK); // player i, draw current frame
     }
-    
+
+    drawSprite(P1, 13, false, players[0].x, players[0].y, BLACK);
+    drawSprite(P2, 15, false, players[1].x, players[1].y, BLACK);
+    drawSprite(P1, 13, false, 264, 228, BLACK);
+    drawSprite(P2, 15, false, 372, 228, BLACK);
+
     drawSprite(stars, 17, false, 320, 480, BLACK);
     drawSprite(moon, 171, false, 320, 480, BLACK);
     drawLooped(clouds2, 479, clouds_x, 480, BLACK);
@@ -875,7 +860,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     if (players[0].hp <= 0 || players[1].hp <= 0)
     {
-      setCursor(SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 200);
+      setCursor(SCREEN_WIDTH / 2 - 180, SCREEN_HEIGHT / 2 - 180);
       setTextSize(4);
       if (players[0].hp <= 0)
       {
