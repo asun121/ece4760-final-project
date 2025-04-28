@@ -361,6 +361,7 @@ typedef struct
  // hitboxes:   0: stand body, 1: stand hit, 2: stand feet, 3: stand head, 4: drop hit, 5: crouch body, 6: crouch hit, 7: upward hit
 const hitbox hitboxes[] = {{28, 160, 60, 160}, {-28, 128, 84, 56}, {28, 0, 60, 0}, {28, 160, 60, 0}, {28, 0, 60, 20}, {28, 124, 60, 124}, {-28, 28, 72, 28}, {8, 200, 32, 40}};
 const short active_frames[] = {-1, 5, -1, -1};                      // active frames for each attack
+short clouds_x = 320;
 
 #define NUM_PLAYERS 2
 
@@ -408,7 +409,16 @@ void drawHealthBars()
   setCursor(370, 25); // left of P2 health bar
   writeString(hp_text);
 }
-
+void drawLooped(const short arr[][2], short arr_len, short x, short y, char color)
+{
+  for (short i = 0; i < arr_len; i++)
+  {
+    if (x - arr[i][0]+4>640)
+      fillRect(x - arr[i][0] -640, y - arr[i][1], 4, 4, color);
+    else
+      fillRect(x - arr[i][0], y - arr[i][1], 4, 4, color);
+  }
+}
 
 void drawSprite(const short arr[][2], short arr_len, bool flip, short x, short y, char color)
 {
@@ -544,7 +554,6 @@ short getKey(bool p1)
   // Otherwise, indicate invalid/non-pressed buttons
   else
     (i = -1);
-  gpio_put(LED, i == -1 ? false : true);
   if (p1)
     return i;
   switch (i)
@@ -656,7 +665,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   drawSprite(rooftop, 741, false, 322, 480, BLACK);
   drawSprite(rooftop, 741, true, 318, 480, BLACK);
 
-
   while (1)
   {
 
@@ -665,6 +673,12 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     players[0].body = players[0].state==8||players[0].state==9? 5:0;// crouch body if crouch OR crouch attack, stand body otherwise
     players[1].body = players[1].state==8||players[1].state==9? 5:0;// crouch body if crouch OR crouch attack, stand body otherwise
+
+    // drawLooped(clouds, 479, clouds_x, 480, WHITE); //erase previous clouds
+    drawLooped(clouds2, 479, clouds_x, 480, WHITE); //erase previous clouds
+    clouds_x++;
+    if(clouds_x>=960)
+      clouds_x=320;
     for (int i = 0; i < NUM_PLAYERS; i++)
     {
       drawFrame(&players[i], WHITE); // player i, erase previous frame
@@ -851,8 +865,13 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
       drawFrame(&players[i], BLACK); // player i, draw current frame
     }
-
-    drawSprite(clouds, 479, false, 320, 200, BLACK);
+    
+    drawSprite(stars, 17, false, 320, 480, BLACK);
+    drawSprite(moon, 171, false, 320, 480, BLACK);
+    drawLooped(clouds2, 479, clouds_x, 480, BLACK);
+    drawLooped(clouds2_inside, 524, clouds_x, 480, WHITE);
+    drawSprite(roof_decoration, 39, false, 324, 480, BLACK);
+    drawSprite(roof_decoration, 39, true, 316, 480, BLACK);
 
     if (players[0].hp <= 0 || players[1].hp <= 0)
     {
