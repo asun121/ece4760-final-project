@@ -508,19 +508,26 @@ short getKey(bool p1)
   static uint32_t keypad;
 
   // Scan the keypad!
-  for (i = 0; i < KEYROWS; i++)
+  short begin=p1?0:2;
+  short end=p1?2:4;
+  for (i = begin; i < end; i++)
   {
     // Set a row high
     gpio_put_masked((0xF << BASE_KEYPAD_PIN),
                     (scancodes[i] << BASE_KEYPAD_PIN));
     // Small delay required
     sleep_us(1);
+    // if(p1)
+    // {
+    //   printf("%d:%d,%d,%d\t",i,gpio_get(13),gpio_get(14),gpio_get(15));
+    // }
     // Read the keycode
     keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
     // Break if button(s) are pressed
     if (keypad & button)
       break;
   }
+  printf("\n");
   // If we found a button . . .
   if (keypad & button)
   {
