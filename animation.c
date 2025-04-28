@@ -380,19 +380,32 @@ player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0}, {640 * 
 
 // Draw health bars for both players
 void drawHealthBars()
-{
-  fillRect(12, 20, 4, 16, BLACK); 
-  fillRect(224, 20, 4, 16, BLACK); 
-  fillRect(412, 20, 4, 16, BLACK); //640-20-200-8
-  fillRect(624, 20, 4, 16, BLACK); //640-20+4
-  fillRect(20, 20, players[0].hp, 16, BLACK); 
-  fillRect(620-players[1].hp, 20, players[1].hp, 16, BLACK);
+{ 
+  fillRect(12, 20, 4, 16, BLACK);   // left bar
+  fillRect(224, 20, 4, 16, BLACK);  // right bar
+  fillRect(20+players[0].hp, 28, 200-players[0].hp, 4, BLACK);  // empty part
+  fillRect(20, 20, players[0].hp, 16, BLACK);  // filled part
+
+  fillRect(412, 20, 4, 16, BLACK); // left bar 
+  fillRect(624, 20, 4, 16, BLACK); // right bar
+  fillRect(420, 28, 200-players[1].hp, 4, BLACK); //empty part
+  fillRect(620-players[1].hp, 20, players[1].hp, 16, BLACK);  //filled part
 }
 
-void eraseHP()
+void eraseHP(bool p1)
 {
-  fillRect(20, 20, 200, 16, WHITE);
-  fillRect(620-200, 20, 200, 16, WHITE);
+  if(p1)
+  {
+    fillRect(20, 20, 200, 16, WHITE);
+    if(players[0].hp<0)
+      players[0].hp=0;
+  }
+  else
+  {
+    fillRect(620-200, 20, 200, 16, WHITE);
+    if(players[0].hp<0)
+      players[0].hp=0;
+  }
 }
 
 void drawLooped(const short arr[][2], short arr_len, short x, short y, char color)
@@ -423,6 +436,8 @@ void drawFrame(player *p, char color)
 
 bool isOverlapping(short h1, short h2, short attacker)
 {
+  if(h1<0||h2<0)
+    return false;
   // short h1x = players[attacker].x-hitboxes[h1].x_off;
   // short h1y = players[attacker].x-hitboxes[h1].y_off;
 
@@ -511,7 +526,6 @@ short getKey(bool p1)
     if (keypad & button)
       break;
   }
-  printf("\n");
   // If we found a button . . .
   if (keypad & button)
   {
@@ -645,8 +659,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     // Measure time at start of thread
     begin_time = time_us_32();
 
-    players[0].body = players[0].state==8||players[0].state==9? 5:0;// crouch body if crouch OR crouch attack, stand body otherwise
-    players[1].body = players[1].state==8||players[1].state==9? 5:0;// crouch body if crouch OR crouch attack, stand body otherwise
+    players[0].body = players[0].state==11?-1:players[0].state==8||players[0].state==9? 5:0;// none if dead, crouch body if crouch OR crouch attack, stand body otherwise
+    players[1].body = players[1].state==11?-1:players[1].state==8||players[1].state==9? 5:0;// none if dead, crouch body if crouch OR crouch attack, stand body otherwise
     
     drawSprite(P1, 13, false, players[0].x, players[0].y, WHITE); //erase previous frame UI
     drawSprite(P2, 15, false, players[1].x, players[1].y, WHITE); //erase previous frame UI
@@ -703,7 +717,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
                 players[!i].frame = 0;
                 players[!i].state = 4; // hurt state
                 players[!i].hp -= 20;  // hurt state
-                eraseHP();
+                eraseHP(!i==0);
               }
             }
           }
@@ -735,7 +749,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
                 players[!i].frame = 0;
                 players[!i].state = 4; // hurt state
                 players[!i].hp -= 20;  // hurt state
-                eraseHP();
+                eraseHP(!i==0);
               }
             }
           }
@@ -757,13 +771,20 @@ static PT_THREAD(protothread_anim(struct pt *pt))
               players[!i].frame = 0;
               players[!i].state = 4; // hurt state
               players[!i].hp -= 20;  // hurt state
-              eraseHP();
+              eraseHP(!i==0);
             }
           }
           break;
         }
         case 4: // hurt state
         {
+          if(players[i].hp<=0)
+          {
+            players[i].frame=0;
+            players[i].state=11;// dead state
+            break;
+          }
+
           players[i].frame++;
           if (players[i].frame > 3)
           {
@@ -825,7 +846,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
                 players[!i].frame = 0;
                 players[!i].state = 4; // hurt state
                 players[!i].hp -= 20;  // hurt state
-                eraseHP();
+                eraseHP(!i==0);
               }
             }
           }
@@ -836,12 +857,20 @@ static PT_THREAD(protothread_anim(struct pt *pt))
           }
           break;
         }
+        case 11: //dead state
+        {
+          if(players[i].frame+1<players[i].animations[11].len)
+            players[i].frame++;
+          break;
+        }
         default:
         {
           break;
         }
       }
-      players[i].flip=players[i].x>players[!i].x;
+      
+      if(players[i].state!=11)// turn towards the other player if not dead
+        players[i].flip=players[i].x>players[!i].x;
 
       drawFrame(&players[i], BLACK); // player i, draw current frame
     }
