@@ -335,10 +335,10 @@ player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0, 3}, {640
 void drawTitleScreen()
 {
   fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
-  setCursor(20, SCREEN_HEIGHT/2+40);
-  setTextSize(4);
+  setCursor(50, SCREEN_HEIGHT/2+60);
+  setTextSize(3);
   setTextColor(WHITE);
-  writeString("Press any key to start...");
+  writeString("Press the same key to start...");
   // drawSprite(title_screen, 640, false, SCREEN_MIDLINE_X - 320, SCREEN_HEIGHT / 2 - 240, BLACK);
   // drawSprite(title_screen, 640, true, SCREEN_MIDLINE_X + 320, SCREEN_HEIGHT / 2 - 240, BLACK);
 }
@@ -699,12 +699,36 @@ void game_step()
     clouds_x++;
     if(clouds_x>=960)
       clouds_x=320;
+
+    drawFrame(&players[0], WHITE); // player 0, erase previous frame
+    drawFrame(&players[1], WHITE); // player 1, erase previous frame
+
     for (int i = 0; i < NUM_PLAYERS; i++)
     {
-      drawFrame(&players[i], WHITE); // player i, erase previous frame
+      
 
       switch (players[i].state)
       {
+        case 12: //crouch guard
+        {
+          players[i].frame++;
+          if (players[i].frame >= players[i].animations[players[i].state].len)
+          {
+            players[i].frame = 0;
+            players[i].state = 8;//back to crouch state
+          }
+          break;
+        }
+        case 14: //stand guard
+        {
+          players[i].frame++;
+          if (players[i].frame >= players[i].animations[players[i].state].len)
+          {
+            players[i].frame = 0;
+            players[i].state = 0;//back to idle state
+          }
+          break;
+        }
         case 8: // crouch
         case 0: // Idle
         case 2: // Forward
@@ -744,6 +768,8 @@ void game_step()
                 if(players[i].shield<3)
                   players[i].shield++;
                 eraseShields(!i==0);
+                players[!i].state = 14; // stand guard
+                players[!i].frame = 0;
               }
               else
               {
@@ -779,6 +805,8 @@ void game_step()
                 if(players[i].shield<3)
                   players[i].shield++;
                 eraseShields(!i==0);
+                players[!i].state = 12; // crouch guard
+                players[!i].frame = 0;
               }
               else
               {
@@ -934,8 +962,11 @@ void game_step()
       if(players[i].state!=11)// turn towards the other player if not dead
         players[i].flip=players[i].x>players[!i].x;
 
-      drawFrame(&players[i], BLACK); // player i, draw current frame
+      
     }
+
+    drawFrame(&players[0], BLACK); // player i, draw current frame
+    drawFrame(&players[1], BLACK); // player i, draw current frame
 
     drawSprite(P1, 13, false, players[0].x, players[0].y, BLACK);
     drawSprite(P2, 15, false, players[1].x, players[1].y, BLACK);
@@ -974,7 +1005,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
         drawTitleScreen();
         ui_state=1;
       case 1:
-        if(getKey(false)>=0||getKey(true)>=0)
+        tracked_key = getKey(false);
+        if(tracked_key>=0 && tracked_key == getKey(true)) //both players must be pressing the same key
         {
           ui_state=2;
           // draw background at the start (initialize)
@@ -989,7 +1021,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       
       case 3:
         drawWinScreen();
-        if(getKey(true)>=0||getKey(false)>=0)
+        tracked_key = getKey(false);
+        if(tracked_key>=0 && tracked_key == getKey(true)) //both players must be pressing the same key
         {
           ui_state=0;
           resetGame();
