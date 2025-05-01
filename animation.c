@@ -334,9 +334,11 @@ player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0, 3}, {640
 
 void drawTitleScreen()
 {
-  fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, WHITE); // set background to white
-  setCursor(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
-  writeString("Press any key to start");
+  fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
+  setCursor(20, SCREEN_HEIGHT/2+40);
+  setTextSize(4);
+  setTextColor(WHITE);
+  writeString("Press any key to start...");
   // drawSprite(title_screen, 640, false, SCREEN_MIDLINE_X - 320, SCREEN_HEIGHT / 2 - 240, BLACK);
   // drawSprite(title_screen, 640, true, SCREEN_MIDLINE_X + 320, SCREEN_HEIGHT / 2 - 240, BLACK);
 }
@@ -369,6 +371,7 @@ void resetGame()
 void drawWinScreen()
 {
   setCursor(SCREEN_WIDTH / 2 - 180, SCREEN_HEIGHT / 2 - 180);
+  setTextColor(BLACK);
   setTextSize(4);
   if (players[0].hp <= 0)
   {
@@ -905,6 +908,8 @@ void game_step()
         {
           if(players[i].frame+1<players[i].animations[11].len)
             players[i].frame++;
+          else
+            ui_state=3;//only transition to game over screen after playing dead animation
           //start falling if above ground && feet not on the other player
           if(players[i].y<GROUND_LEVEL&&!isOverlapping(2,players[!i].body,i))
           {
@@ -944,10 +949,6 @@ void game_step()
     drawSprite(roof_decoration, 39, false, 324, 480, BLACK);
     drawSprite(roof_decoration, 39, true, 316, 480, BLACK);
 
-    if (players[0].hp <= 0 || players[1].hp <= 0)
-    {
-      ui_state = 2; // game over state
-    }
 }
 // Animation on core 0
 static PT_THREAD(protothread_anim(struct pt *pt))
@@ -959,8 +960,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   static int begin_time;
   static int spare_time;
 
-  fillRect(0, 0, 640, 480, WHITE); // set background to white
 
+  
 
   while (1)
   {
@@ -971,23 +972,27 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     {
       case 0:
         drawTitleScreen();
-        if(tracked_key>=0)
+        ui_state=1;
+      case 1:
+        if(getKey(false)>=0||getKey(true)>=0)
         {
-          ui_state=1;
+          ui_state=2;
           // draw background at the start (initialize)
+          fillRect(0,0,640,480,WHITE);
           drawSprite(rooftop, 741, false, 322, 480, BLACK);
           drawSprite(rooftop, 741, true, 318, 480, BLACK);
         }
         break;
-      case 1:
+      case 2:
         game_step(); // game step
         break;
       
-      case 2:
+      case 3:
         drawWinScreen();
-        if(tracked_key>=0)
+        if(getKey(true)>=0||getKey(false)>=0)
         {
           ui_state=0;
+          resetGame();
         }
         break;
       default:
@@ -1025,8 +1030,12 @@ static PT_THREAD(protothread_core1(struct pt *pt))
   {
     // Measure time at start of thread
     begin_time = time_us_32();
-    drawHealthBars();
-    drawShields();
+
+    if(ui_state==2)
+    {
+      drawHealthBars();
+      drawShields();
+    }
 
     spare_time = FRAME_RATE - (time_us_32() - begin_time);
 
