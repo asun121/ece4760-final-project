@@ -108,14 +108,14 @@ typedef signed int fix15;
 #define KEYPAD2_PIN3 22
 
 
-const fix15 GRAVITY = float2fix15(0.75);
-
 unsigned int keycodes[12] = {0x28, 0x11, 0x21, 0x41, 0x12,
                              0x22, 0x42, 0x14, 0x24, 0x44,
                              0x18, 0x48};
 unsigned int scancodes[4] = {0x01, 0x02, 0x04, 0x08};
 
 unsigned int button = 0x70;
+
+short ui_state=0;
 
 // Define background colors
 #define GRASS_COLOR GREEN
@@ -343,7 +343,27 @@ void drawTitleScreen()
 
 void resetGame()
 {
-  players = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0, 3}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 200, A, 0, 3}};
+  players[0].x=640 / 4;
+  players[0].y=GROUND_LEVEL;
+  players[0].flip = false;
+  players[0].state = 0;
+  players[0].frame=0;
+  players[0].attack_hitbox=0;
+  players[0].hp=200;
+  players[0].animations=E;
+  players[0].body = 0;
+  players[0].shield = 3;
+
+  players[1].x=640*3/4;
+  players[1].y=GROUND_LEVEL;
+  players[1].flip = true;
+  players[1].state = 0;
+  players[1].frame=0;
+  players[1].attack_hitbox=0;
+  players[1].hp=200;
+  players[1].animations=A;
+  players[1].body = 0;
+  players[1].shield = 3;
 }
 
 void drawWinScreen()
@@ -530,18 +550,24 @@ short getKey(bool p1)
                     (scancodes[i] << BASE_KEYPAD_PIN));
     // Small delay required
     sleep_us(1);
-    // if(p1)
-    // {
-    //   printf("%d:%d,%d,%d\t",i,gpio_get(13),gpio_get(14),gpio_get(15));
-    // }
-    // Read the keycode
-    keypad = p1?((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F):(gpio_get(KEYPAD2_PIN1) << 6)|(gpio_get(KEYPAD2_PIN2) << 5)|(gpio_get(KEYPAD2_PIN3) << 4);
+    if (!p1)
+    {
+      if(gpio_get(KEYPAD2_PIN1))
+        return i==2?1:4;
+      else if(gpio_get(KEYPAD2_PIN2))
+        return i==2?2:5;
+      else if(gpio_get(KEYPAD2_PIN3))
+        return i==2?3:6;
+    }
+    keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
     
     
     // Break if button(s) are pressed
     if (keypad & button)
       break;
   }
+  if(!p1)
+    return -1;
   // If we found a button . . .
   if (keypad & button)
   {
@@ -655,9 +681,6 @@ void handle_input(short tracked_key, short i)
 
 void game_step()
 {
-  
-    // Measure time at start of thread
-    begin_time = time_us_32();
 
     // drawRect(80, 0 ,640-160, 480, BLACK);
 
@@ -925,20 +948,6 @@ void game_step()
     {
       ui_state = 2; // game over state
     }
-
-    // delay in accordance with frame rate
-    spare_time = FRAME_RATE - (time_us_32() - begin_time);
-    if (spare_time < 0)
-    {
-      gpio_put(LED_PIN, 1);
-    }
-    else
-    {
-      gpio_put(LED_PIN, 0);
-    }
-    // yield for necessary amount of time
-    PT_YIELD_usec(spare_time);
-    // NEVER exit while
 }
 // Animation on core 0
 static PT_THREAD(protothread_anim(struct pt *pt))
@@ -953,9 +962,11 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   fillRect(0, 0, 640, 480, WHITE); // set background to white
 
 
-
   while (1)
   {
+    // Measure time at start of thread
+    begin_time = time_us_32();
+
     switch(ui_state)
     {
       case 0:
@@ -982,6 +993,21 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       default:
         break;
     }
+
+    // delay in accordance with frame rate
+    spare_time = FRAME_RATE - (time_us_32() - begin_time);
+    if (spare_time < 0)
+    {
+      gpio_put(LED_PIN, 1);
+    }
+    else
+    {
+      gpio_put(LED_PIN, 0);
+    }
+    // yield for necessary amount of time
+    PT_YIELD_usec(spare_time);
+    // NEVER exit while
+
   } // END WHILE(1)
   PT_END(pt);
 } // animation thread
@@ -1136,8 +1162,11 @@ int main()
   gpio_pull_down((BASE_KEYPAD_PIN + 4));
   gpio_pull_down((BASE_KEYPAD_PIN + 5));
   gpio_pull_down((BASE_KEYPAD_PIN + 6));
+  gpio_pull_down((KEYPAD2_PIN1));
+  gpio_pull_down((KEYPAD2_PIN2));
+  gpio_pull_down((KEYPAD2_PIN3));
 
-  gpio_init();
+  // gpio_init();
 
   // pt_add_thread(protothread_keypad) ;
 
