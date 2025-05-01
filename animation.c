@@ -341,6 +341,25 @@ void drawTitleScreen()
   // drawSprite(title_screen, 640, true, SCREEN_MIDLINE_X + 320, SCREEN_HEIGHT / 2 - 240, BLACK);
 }
 
+void resetGame()
+{
+  players = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0, 3}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 200, A, 0, 3}};
+}
+
+void drawWinScreen()
+{
+  setCursor(SCREEN_WIDTH / 2 - 180, SCREEN_HEIGHT / 2 - 180);
+  setTextSize(4);
+  if (players[0].hp <= 0)
+  {
+    writeString("PLAYER 2 WINS!");
+  }
+  else
+  {
+    writeString("PLAYER 1 WINS!");
+  }
+}
+
 // Draw health bars for both players
 void drawHealthBars()
 { 
@@ -634,27 +653,9 @@ void handle_input(short tracked_key, short i)
   }
 }
 
-// void ui_
-
-// Animation on core 0
-static PT_THREAD(protothread_anim(struct pt *pt))
+void game_step()
 {
-  // Mark beginning of thread
-  PT_BEGIN(pt);
-
-  // Variables for maintaining frame rate
-  static int begin_time;
-  static int spare_time;
-
-  fillRect(0, 0, 640, 480, WHITE); // set background to white
-
-  // draw background at the start (initialize)
-  drawSprite(rooftop, 741, false, 322, 480, BLACK);
-  drawSprite(rooftop, 741, true, 318, 480, BLACK);
-
-  while (1)
-  {
-
+  
     // Measure time at start of thread
     begin_time = time_us_32();
 
@@ -922,16 +923,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     if (players[0].hp <= 0 || players[1].hp <= 0)
     {
-      setCursor(SCREEN_WIDTH / 2 - 180, SCREEN_HEIGHT / 2 - 180);
-      setTextSize(4);
-      if (players[0].hp <= 0)
-      {
-        writeString("PLAYER 2 WINS!");
-      }
-      else
-      {
-        writeString("PLAYER 1 WINS!");
-      }
+      ui_state = 2; // game over state
     }
 
     // delay in accordance with frame rate
@@ -947,6 +939,49 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     // yield for necessary amount of time
     PT_YIELD_usec(spare_time);
     // NEVER exit while
+}
+// Animation on core 0
+static PT_THREAD(protothread_anim(struct pt *pt))
+{
+  // Mark beginning of thread
+  PT_BEGIN(pt);
+
+  // Variables for maintaining frame rate
+  static int begin_time;
+  static int spare_time;
+
+  fillRect(0, 0, 640, 480, WHITE); // set background to white
+
+
+
+  while (1)
+  {
+    switch(ui_state)
+    {
+      case 0:
+        drawTitleScreen();
+        if(tracked_key>=0)
+        {
+          ui_state=1;
+          // draw background at the start (initialize)
+          drawSprite(rooftop, 741, false, 322, 480, BLACK);
+          drawSprite(rooftop, 741, true, 318, 480, BLACK);
+        }
+        break;
+      case 1:
+        game_step(); // game step
+        break;
+      
+      case 2:
+        drawWinScreen();
+        if(tracked_key>=0)
+        {
+          ui_state=0;
+        }
+        break;
+      default:
+        break;
+    }
   } // END WHILE(1)
   PT_END(pt);
 } // animation thread
@@ -1101,6 +1136,8 @@ int main()
   gpio_pull_down((BASE_KEYPAD_PIN + 4));
   gpio_pull_down((BASE_KEYPAD_PIN + 5));
   gpio_pull_down((BASE_KEYPAD_PIN + 6));
+
+  gpio_init();
 
   // pt_add_thread(protothread_keypad) ;
 
