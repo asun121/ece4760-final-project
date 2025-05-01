@@ -103,6 +103,10 @@ typedef signed int fix15;
 #define BASE_KEYPAD_PIN 9
 #define KEYROWS 4
 #define NUMKEYS 12
+#define KEYPAD2_PIN1 3
+#define KEYPAD2_PIN2 4
+#define KEYPAD2_PIN3 22
+
 
 const fix15 GRAVITY = float2fix15(0.75);
 
@@ -120,9 +124,9 @@ unsigned int button = 0x70;
 #define STONE_COLOR ORANGE
 
 #define GROUND_HEIGHT 60
-#define GROUND_LEVEL 480-GROUND_HEIGHT
+#define GROUND_LEVEL 480 - GROUND_HEIGHT
 #define GROUND_LEFT 148
-#define GROUND_RIGHT 640-148
+#define GROUND_RIGHT 640 - 148
 
 //=========Sound==========
 
@@ -288,47 +292,6 @@ void drawGround()
   fillRect(0, groundTop, SCREEN_WIDTH, GROUND_HEIGHT, BLACK);
 }
 
-// Draw Background with only ground and clouds
-void drawBackground()
-{
-  // Main ground platform - positioned below where players stand (3/4 of screen height)
-  int groundTop = SCREEN_HEIGHT - 110;
-
-  // Draw main grass layer
-  fillRect(0, groundTop, SCREEN_WIDTH, 30, DARK_GRASS);
-
-  // Draw dirt layer below grass
-  // fillRect(0, groundTop + 30, SCREEN_WIDTH, 80, DIRT_COLOR);
-  fillRect(0, groundTop + 30, SCREEN_WIDTH, 80, DIRT_COLOR);
-
-  // Draw textured grass on top (small varied tufts)
-  for (int i = 0; i < 60; i++)
-  {
-    int grassX = 10 + i * 11;
-    int height = 5 + (i % 3) * 2; // Varied heights
-    fillRect(grassX, groundTop - height, 3, height, DARK_GRASS);
-  }
-
-  // Add some stones/rocks scattered on the ground
-  for (int i = 0; i < 12; i++)
-  {
-    int stoneX = 50 + i * 50;
-    int stoneY = groundTop + 10 + (i % 3) * 5;
-    int stoneSize = 4 + (i % 4) * 2;
-    fillCircle(stoneX, stoneY, stoneSize, STONE_COLOR);
-  }
-
-  // Draw some ground texture/patterns
-  for (int i = 0; i < 20; i++)
-  {
-    int x = 30 + i * 30;
-    // Darker patches of dirt
-    fillRect(x, groundTop + 35, 15, 10, YELLOW);
-  }
-
-  // Draw ground edge detail (slightly darker line at the top edge)
-  drawLine(0, groundTop, SCREEN_WIDTH, groundTop, DARK_GRASS);
-}
 
 static uint32_t last_update_time = 0;
 static uint32_t elapsed_time_sec = 0;
@@ -369,12 +332,14 @@ short clouds_x = 320;
 #define NUM_PLAYERS 2
 player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0, 3}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 200, A, 0, 3}};
 
-// typedef struct
-// {
-//   const short (*const *frames)[2]; //pointer to an array of
-//   const short *pixel_counts; //pixel counts in each frame
-//   const short size; //number of frames
-// }Animation;
+void drawTitleScreen()
+{
+  fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, WHITE); // set background to white
+  setCursor(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+  writeString("Press any key to start");
+  // drawSprite(title_screen, 640, false, SCREEN_MIDLINE_X - 320, SCREEN_HEIGHT / 2 - 240, BLACK);
+  // drawSprite(title_screen, 640, true, SCREEN_MIDLINE_X + 320, SCREEN_HEIGHT / 2 - 240, BLACK);
+}
 
 // Draw health bars for both players
 void drawHealthBars()
@@ -551,7 +516,9 @@ short getKey(bool p1)
     //   printf("%d:%d,%d,%d\t",i,gpio_get(13),gpio_get(14),gpio_get(15));
     // }
     // Read the keycode
-    keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
+    keypad = p1?((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F):(gpio_get(KEYPAD2_PIN1) << 6)|(gpio_get(KEYPAD2_PIN2) << 5)|(gpio_get(KEYPAD2_PIN3) << 4);
+    
+    
     // Break if button(s) are pressed
     if (keypad & button)
       break;
@@ -667,6 +634,8 @@ void handle_input(short tracked_key, short i)
   }
 }
 
+// void ui_
+
 // Animation on core 0
 static PT_THREAD(protothread_anim(struct pt *pt))
 {
@@ -691,13 +660,15 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     // drawRect(80, 0 ,640-160, 480, BLACK);
 
+    printf("returned:%d\n",getKey(false));
+
     players[0].body = players[0].state==11?-1:players[0].state==8||players[0].state==9? 5:0;// none if dead, crouch body if crouch OR crouch attack, stand body otherwise
     players[1].body = players[1].state==11?-1:players[1].state==8||players[1].state==9? 5:0;// none if dead, crouch body if crouch OR crouch attack, stand body otherwise
     
     drawSprite(P1, 13, false, players[0].x, players[0].y, WHITE); //erase previous frame UI
     drawSprite(P2, 15, false, players[1].x, players[1].y, WHITE); //erase previous frame UI
     // drawLooped(clouds, 479, clouds_x, 480, WHITE); //erase previous clouds
-    drawLooped(clouds2, 479, clouds_x, 480, WHITE); //erase previous clouds
+    drawLooped(clouds3, 403, clouds_x, 480, WHITE); //erase previous clouds
     clouds_x++;
     if(clouds_x>=960)
       clouds_x=320;
@@ -731,7 +702,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
         case 1: // stand attack
         {
           players[i].frame++;
-          if (players[i].frame > 7)
+          if (players[i].frame >= players[i].animations[1].len)
             players[i].frame = 0;
 
           // check if attack active
@@ -742,7 +713,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
               //check back block 
               if(players[!i].shield>0 && players[!i].state == 3)
               {
-                printf("blocked\n");
                 players[!i].shield--;
                 if(players[i].shield<3)
                   players[i].shield++;
@@ -778,7 +748,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
               //check crouch block 
               if(players[!i].shield>0 && players[!i].state == 8)
               {
-                printf("blocked\n");
                 players[!i].shield--;
                 if(players[i].shield<3)
                   players[i].shield++;
@@ -826,7 +795,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
           }
 
           players[i].frame++;
-          if (players[i].frame > 3)
+          if (players[i].frame >= players[i].animations[4].len)
           {
             players[i].frame = 0;
             players[i].state = 0; // back to idle state
@@ -883,11 +852,14 @@ static PT_THREAD(protothread_anim(struct pt *pt))
               //check jump block 
               if(players[!i].shield>0 && players[!i].state == 5)
               {
-                printf("blocked\n");
                 players[!i].shield--;
                 if(players[i].shield<3)
                   players[i].shield++;
                 eraseShields(!i==0);
+                players[!i].state = 6; //fall state
+                players[!i].frame = 0; //fall state
+                players[i].state = 5; //jump state
+                players[i].frame = 0; //jump state
               }
               else
               {
@@ -941,10 +913,10 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     drawSprite(P1, 13, false, 264, 228, BLACK);
     drawSprite(P2, 15, false, 372, 228, BLACK);
 
-    drawSprite(stars, 17, false, 320, 480, BLACK);
+    drawSprite(stars2, 15, false, 320, 480, BLACK);
     drawSprite(moon, 171, false, 320, 480, BLACK);
-    drawLooped(clouds2, 479, clouds_x, 480, BLACK);
-    drawLooped(clouds2_inside, 524, clouds_x, 480, WHITE);
+    drawLooped(clouds3, 403, clouds_x, 480, BLACK);
+    drawLooped(clouds3_inside, 515, clouds_x, 480, WHITE);
     drawSprite(roof_decoration, 39, false, 324, 480, BLACK);
     drawSprite(roof_decoration, 39, true, 316, 480, BLACK);
 
