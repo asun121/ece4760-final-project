@@ -107,7 +107,6 @@ typedef signed int fix15;
 #define KEYPAD2_PIN2 4
 #define KEYPAD2_PIN3 22
 
-
 unsigned int keycodes[12] = {0x28, 0x11, 0x21, 0x41, 0x12,
                              0x22, 0x42, 0x14, 0x24, 0x44,
                              0x18, 0x48};
@@ -115,7 +114,7 @@ unsigned int scancodes[4] = {0x01, 0x02, 0x04, 0x08};
 
 unsigned int button = 0x70;
 
-short ui_state=0;
+short ui_state = 0;
 
 // Define background colors
 #define GRASS_COLOR GREEN
@@ -179,14 +178,10 @@ fix15 current_amplitude_1 = 0;      // current amplitude (modified in ISR)
 // State machine variables
 volatile unsigned int count_0 = 0;
 
-// button state: 0 = not pressed, 1 = maybe pressed, 2 = pressed, 3 = maybe not pressed
-volatile unsigned int BUTTON_STATE = 0;
 
-// Mode state: 0 = normal play sound, 1 = record sound, 2 = playback sound
-volatile unsigned int MODE = 0;
 
-// Track the pressed button
-volatile unsigned int TRACKED_BUTTON = 0;
+
+
 
 // SPI data
 uint16_t DAC_data_1; // output value
@@ -285,13 +280,14 @@ static void alarm_irq(void)
   gpio_put(ISR_GPIO, 0);
 }
 
+
+
 void drawGround()
 {
   int groundTop = SCREEN_HEIGHT - GROUND_HEIGHT;
 
   fillRect(0, groundTop, SCREEN_WIDTH, GROUND_HEIGHT, BLACK);
 }
-
 
 static uint32_t last_update_time = 0;
 static uint32_t elapsed_time_sec = 0;
@@ -311,7 +307,7 @@ typedef struct
   short attack_hitbox;
   short hp;
   Anim *animations;
-  
+
   short body;
   short shield;
 } player;
@@ -324,9 +320,9 @@ typedef struct
   short h;
 } hitbox;
 
- // hitboxes:   0: stand body, 1: stand hit, 2: stand feet, 3: stand head, 4: drop hit, 5: crouch body, 6: crouch hit, 7: upward hit
+// hitboxes:   0: stand body, 1: stand hit, 2: stand feet, 3: stand head, 4: drop hit, 5: crouch body, 6: crouch hit, 7: upward hit
 const hitbox hitboxes[] = {{28, 160, 60, 160}, {-28, 128, 84, 56}, {28, 0, 60, 0}, {28, 160, 60, 0}, {28, 0, 60, 20}, {28, 124, 60, 124}, {-28, 28, 72, 28}, {8, 200, 32, 40}};
-const short active_frames[] = {-1, 5, -1, -1};                      // active frames for each attack
+const short active_frames[] = {-1, 5, -1, -1}; // active frames for each attack
 short clouds_x = 320;
 
 #define NUM_PLAYERS 2
@@ -335,7 +331,7 @@ player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0, 3}, {640
 void drawTitleScreen()
 {
   fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
-  setCursor(50, SCREEN_HEIGHT/2+60);
+  setCursor(50, SCREEN_HEIGHT / 2 + 60);
   setTextSize(3);
   setTextColor(WHITE);
   writeString("Press the same key to start...");
@@ -343,27 +339,36 @@ void drawTitleScreen()
   // drawSprite(title_screen, 640, true, SCREEN_MIDLINE_X + 320, SCREEN_HEIGHT / 2 - 240, BLACK);
 }
 
+void drawPauseScreen()
+{
+  fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
+  setCursor(50, SCREEN_HEIGHT / 2 + 60);
+  setTextSize(3);
+  setTextColor(WHITE);
+  writeString("Paused...");
+}
+
 void resetGame()
 {
-  players[0].x=640 / 4;
-  players[0].y=GROUND_LEVEL;
+  players[0].x = 640 / 4;
+  players[0].y = GROUND_LEVEL;
   players[0].flip = false;
   players[0].state = 0;
-  players[0].frame=0;
-  players[0].attack_hitbox=0;
-  players[0].hp=200;
-  players[0].animations=E;
+  players[0].frame = 0;
+  players[0].attack_hitbox = 0;
+  players[0].hp = 200;
+  players[0].animations = E;
   players[0].body = 0;
   players[0].shield = 3;
 
-  players[1].x=640*3/4;
-  players[1].y=GROUND_LEVEL;
+  players[1].x = 640 * 3 / 4;
+  players[1].y = GROUND_LEVEL;
   players[1].flip = true;
   players[1].state = 0;
-  players[1].frame=0;
-  players[1].attack_hitbox=0;
-  players[1].hp=200;
-  players[1].animations=A;
+  players[1].frame = 0;
+  players[1].attack_hitbox = 0;
+  players[1].hp = 200;
+  players[1].animations = A;
   players[1].body = 0;
   players[1].shield = 3;
 }
@@ -385,30 +390,30 @@ void drawWinScreen()
 
 // Draw health bars for both players
 void drawHealthBars()
-{ 
-  fillRect(12, 20, 4, 16, BLACK);   // left bar
-  fillRect(224, 20, 4, 16, BLACK);  // right bar
-  fillRect(20+players[0].hp, 28, 200-players[0].hp, 4, BLACK);  // empty part
-  fillRect(20, 20, players[0].hp, 16, BLACK);  // filled part
+{
+  fillRect(12, 20, 4, 16, BLACK);                                  // left bar
+  fillRect(224, 20, 4, 16, BLACK);                                 // right bar
+  fillRect(20 + players[0].hp, 28, 200 - players[0].hp, 4, BLACK); // empty part
+  fillRect(20, 20, players[0].hp, 16, BLACK);                      // filled part
 
-  fillRect(412, 20, 4, 16, BLACK); // left bar 
-  fillRect(624, 20, 4, 16, BLACK); // right bar
-  fillRect(420, 28, 200-players[1].hp, 4, BLACK); //empty part
-  fillRect(620-players[1].hp, 20, players[1].hp, 16, BLACK);  //filled part  
+  fillRect(412, 20, 4, 16, BLACK);                             // left bar
+  fillRect(624, 20, 4, 16, BLACK);                             // right bar
+  fillRect(420, 28, 200 - players[1].hp, 4, BLACK);            // empty part
+  fillRect(620 - players[1].hp, 20, players[1].hp, 16, BLACK); // filled part
 }
 
 void drawShields()
 {
-  for(short i=0,x=12;i<4;i++, x+=52)
+  for (short i = 0, x = 12; i < 4; i++, x += 52)
   {
     fillRect(x, 40, 4, 8, BLACK);
-    fillRect(640-x-4, 40, 4, 8, BLACK);
+    fillRect(640 - x - 4, 40, 4, 8, BLACK);
   }
-  for(short i=0,x=20;i<players[0].shield;i++, x+=52)
+  for (short i = 0, x = 20; i < players[0].shield; i++, x += 52)
   {
     fillRect(x, 40, 40, 8, BLACK);
   }
-  for(short i=0,x=580;i<players[1].shield;i++, x-=52)
+  for (short i = 0, x = 580; i < players[1].shield; i++, x -= 52)
   {
     fillRect(x, 40, 40, 8, BLACK);
   }
@@ -416,13 +421,13 @@ void drawShields()
 
 void eraseShields(bool p1)
 {
-  if(p1)
-    for(short i=0,x=20;i<3;i++,x+=52)
+  if (p1)
+    for (short i = 0, x = 20; i < 3; i++, x += 52)
     {
       fillRect(x, 40, 40, 8, WHITE);
     }
   else
-    for(short i=0,x=476;i<3;i++,x+=52)
+    for (short i = 0, x = 476; i < 3; i++, x += 52)
     {
       fillRect(x, 40, 40, 8, WHITE);
     }
@@ -430,17 +435,17 @@ void eraseShields(bool p1)
 
 void eraseHP(bool p1)
 {
-  if(p1)
+  if (p1)
   {
     fillRect(20, 20, 200, 16, WHITE);
-    if(players[0].hp<0)
-      players[0].hp=0;
+    if (players[0].hp < 0)
+      players[0].hp = 0;
   }
   else
   {
-    fillRect(620-200, 20, 200, 16, WHITE);
-    if(players[0].hp<0)
-      players[0].hp=0;
+    fillRect(620 - 200, 20, 200, 16, WHITE);
+    if (players[0].hp < 0)
+      players[0].hp = 0;
   }
 }
 
@@ -448,8 +453,8 @@ void drawLooped(const short arr[][2], short arr_len, short x, short y, char colo
 {
   for (short i = 0; i < arr_len; i++)
   {
-    if (x - arr[i][0]+4>640)
-      fillRect(x - arr[i][0] -640, y - arr[i][1], 4, 4, color);
+    if (x - arr[i][0] + 4 > 640)
+      fillRect(x - arr[i][0] - 640, y - arr[i][1], 4, 4, color);
     else
       fillRect(x - arr[i][0], y - arr[i][1], 4, 4, color);
   }
@@ -472,7 +477,7 @@ void drawFrame(player *p, char color)
 
 bool isOverlapping(short h1, short h2, short attacker)
 {
-  if(h1<0||h2<0)
+  if (h1 < 0 || h2 < 0)
     return false;
   // short h1x = players[attacker].x-hitboxes[h1].x_off;
   // short h1y = players[attacker].x-hitboxes[h1].y_off;
@@ -483,9 +488,9 @@ bool isOverlapping(short h1, short h2, short attacker)
   short h2xR = players[!attacker].x + hitboxes[h2].x_off - hitboxes[h2].w;
 
   short h1y1 = players[attacker].y - hitboxes[h1].y_off;
-  short h1y2 = h1y1+hitboxes[h1].h;
+  short h1y2 = h1y1 + hitboxes[h1].h;
   short h2y1 = players[!attacker].y - hitboxes[h2].y_off;
-  short h2y2 = h2y1+hitboxes[h2].h;
+  short h2y2 = h2y1 + hitboxes[h2].h;
   // short h1y = players[attacker].y;
   // short h2y = players[!attacker].y;
 
@@ -516,16 +521,16 @@ bool isOverlapping(short h1, short h2, short attacker)
   }
 
   // return ((h1x>h2x && h1x<h2x+hitboxes[h2].w)||(h1x+hitboxes[h1].w>h2x && h1x<h2x+hitboxes[h2].w)) && ((h1y<h2y && h1y>h2y-hitboxes[h2].h)||(h1y-hitboxes[h1].h<h2y && h1y-hitboxes[h1].h>h2y-hitboxes[h2].h));
-  bool x_overlap = (h1x1 >= h2x1 && h1x1 <= h2x2) || (h1x2 >= h2x1 && h1x2 <= h2x2) || (h2x1 >= h1x1 && h2x1 <= h1x2) || (h2x2>=h1x1 && h2x2<=h1x2);
-  bool y_overlap = (h1y1 >= h2y1 && h1y1 <= h2y2) || (h1y2 >= h2y1 && h1y2 <= h2y2) || (h2y1 >= h1y1 && h2y1 <= h1y2) || (h2y2>=h1y1 && h2y2<=h1y2);
-  bool r=x_overlap&&y_overlap;
-  
+  bool x_overlap = (h1x1 >= h2x1 && h1x1 <= h2x2) || (h1x2 >= h2x1 && h1x2 <= h2x2) || (h2x1 >= h1x1 && h2x1 <= h1x2) || (h2x2 >= h1x1 && h2x2 <= h1x2);
+  bool y_overlap = (h1y1 >= h2y1 && h1y1 <= h2y2) || (h1y2 >= h2y1 && h1y2 <= h2y2) || (h2y1 >= h1y1 && h2y1 <= h1y2) || (h2y2 >= h1y1 && h2y2 <= h1y2);
+  bool r = x_overlap && y_overlap;
+
   // if(r)
   // {
   //   drawRect(h1x1,h1y1,h1x2-h1x1,h1y2-h1y1, BLUE);
   //   drawRect(h2x1,h2y1,h2x2-h2x1,h1y2-h1y1, YELLOW);
   // }
-  
+
   // if(x_overlap)
   //   printf("x_overlap\n");
   // if(y_overlap)
@@ -544,8 +549,8 @@ short getKey(bool p1)
   static uint32_t keypad;
 
   // Scan the keypad!
-  short begin=p1?0:2;
-  short end=p1?2:4;
+  short begin = p1 ? 0 : 2;
+  short end = p1 ? 2 : 4;
   for (i = begin; i < end; i++)
   {
     // Set a row high
@@ -555,21 +560,20 @@ short getKey(bool p1)
     sleep_us(1);
     if (!p1)
     {
-      if(gpio_get(KEYPAD2_PIN1))
-        return i==2?1:4;
-      else if(gpio_get(KEYPAD2_PIN2))
-        return i==2?2:5;
-      else if(gpio_get(KEYPAD2_PIN3))
-        return i==2?3:6;
+      if (gpio_get(KEYPAD2_PIN1))
+        return i == 2 ? 1 : 4;
+      else if (gpio_get(KEYPAD2_PIN2))
+        return i == 2 ? 2 : 5;
+      else if (gpio_get(KEYPAD2_PIN3))
+        return i == 2 ? 3 : 6;
     }
     keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
-    
-    
+
     // Break if button(s) are pressed
     if (keypad & button)
       break;
   }
-  if(!p1)
+  if (!p1)
     return -1;
   // If we found a button . . .
   if (keypad & button)
@@ -605,26 +609,26 @@ void handle_input_floating(short i)
   short tracked_key = getKey(i == 0);
   switch (tracked_key)
   {
-    case 4: // left
-    {
-      bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
-      players[i].x -= 20;
-      if(players[i].x<GROUND_LEFT || (!overlap_before&&isOverlapping(players[i].body,players[!i].body,i)))
-        players[i].x += 20;
-      break;
-    }
-    case 6: // right
-    {
-      bool overlap_before=isOverlapping(players[i].body, players[!i].body, i);
+  case 4: // left
+  {
+    bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
+    players[i].x -= 20;
+    if (players[i].x < GROUND_LEFT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
       players[i].x += 20;
-      if(players[i].x>GROUND_RIGHT || (!overlap_before&&isOverlapping(players[i].body, players[!i].body, i)))
-        players[i].x -= 20;
-      break;
-    }
-    default:
-    {
-      break;
-    }
+    break;
+  }
+  case 6: // right
+  {
+    bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
+    players[i].x += 20;
+    if (players[i].x > GROUND_RIGHT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
+      players[i].x -= 20;
+    break;
+  }
+  default:
+  {
+    break;
+  }
   }
 }
 
@@ -634,44 +638,52 @@ void handle_input(short tracked_key, short i)
   {
   case 4: // left
   {
-    bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
-    players[i].x -= 5;
-    if(players[i].x<GROUND_LEFT||(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i)))
-      players[i].x += 5;
+    bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
+    players[i].x -= 10;
+    if (players[i].x < GROUND_LEFT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
+      players[i].x += 10;
     players[i].state = players[i].flip ? 2 : 3;
     break;
   }
   case 6: // right
   {
-    bool overlap_before=isOverlapping(players[i].body,players[!i].body,i);
-    players[i].x += 5;
-    if(players[i].x>GROUND_RIGHT||(!overlap_before&&isOverlapping(players[i].body,players[!i].body,i)))
-      players[i].x -= 5;
+    bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
+    players[i].x += 10;
+    if (players[i].x > GROUND_RIGHT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
+      players[i].x -= 10;
     players[i].state = players[i].flip ? 3 : 2;
     break;
   }
   case 5: // down
   {
     players[i].frame = 0;
-    players[i].state = 8; //crouch state;
+    players[i].state = 8; // crouch state;
     break;
   }
-  case 3: //upward punch
+  case 3: // upward punch
   {
     players[i].frame = 0;
-    players[i].state = 10; 
+    players[i].state = 10;
     break;
   }
   case 1: // attack
   {
-    players[i].state = players[i].state==8?9:1; // crouch=>crouch attack, else stand attack
+    players[i].state = players[i].state == 8 ? 9 : 1; // crouch=>crouch attack, else stand attack
     players[i].frame = 0;
     break;
   }
-  case 2: //jump
+  case 2: // jump
   {
     players[i].state = 5; // jump state
     players[i].frame = 0;
+    break;
+  }
+  case 7: // pause_game
+  {
+    if (ui_state == 2)
+    {
+      ui_state = 4;
+    }
     break;
   }
   default:
@@ -685,301 +697,298 @@ void handle_input(short tracked_key, short i)
 void game_step()
 {
 
-    // drawRect(80, 0 ,640-160, 480, BLACK);
+  // drawRect(80, 0 ,640-160, 480, BLACK);
 
-    printf("returned:%d\n",getKey(false));
 
-    players[0].body = players[0].state==11?-1:players[0].state==8||players[0].state==9? 5:0;// none if dead, crouch body if crouch OR crouch attack, stand body otherwise
-    players[1].body = players[1].state==11?-1:players[1].state==8||players[1].state==9? 5:0;// none if dead, crouch body if crouch OR crouch attack, stand body otherwise
-    
-    drawSprite(P1, 13, false, players[0].x, players[0].y, WHITE); //erase previous frame UI
-    drawSprite(P2, 15, false, players[1].x, players[1].y, WHITE); //erase previous frame UI
-    // drawLooped(clouds, 479, clouds_x, 480, WHITE); //erase previous clouds
-    drawLooped(clouds3, 403, clouds_x, 480, WHITE); //erase previous clouds
-    clouds_x++;
-    if(clouds_x>=960)
-      clouds_x=320;
+  players[0].body = players[0].state == 11 ? -1 : players[0].state == 8 || players[0].state == 9 ? 5
+                                                                                                 : 0; // none if dead, crouch body if crouch OR crouch attack, stand body otherwise
+  players[1].body = players[1].state == 11 ? -1 : players[1].state == 8 || players[1].state == 9 ? 5
+                                                                                                 : 0; // none if dead, crouch body if crouch OR crouch attack, stand body otherwise
 
-    drawFrame(&players[0], WHITE); // player 0, erase previous frame
-    drawFrame(&players[1], WHITE); // player 1, erase previous frame
+  drawSprite(P1, 13, false, players[0].x, players[0].y, WHITE); // erase previous frame UI
+  drawSprite(P2, 15, false, players[1].x, players[1].y, WHITE); // erase previous frame UI
+  // drawLooped(clouds, 479, clouds_x, 480, WHITE); //erase previous clouds
+  drawLooped(clouds3, 403, clouds_x, 480, WHITE); // erase previous clouds
+  clouds_x++;
+  if (clouds_x >= 960)
+    clouds_x = 320;
 
-    for (int i = 0; i < NUM_PLAYERS; i++)
+  drawFrame(&players[0], WHITE); // player 0, erase previous frame
+  drawFrame(&players[1], WHITE); // player 1, erase previous frame
+
+  for (int i = 0; i < NUM_PLAYERS; i++)
+  {
+    switch (players[i].state)
     {
-      
-
-      switch (players[i].state)
+    case 12: // crouch guard
+    {
+      players[i].frame++;
+      if (players[i].frame >= players[i].animations[players[i].state].len)
       {
-        case 12: //crouch guard
-        {
-          players[i].frame++;
-          if (players[i].frame >= players[i].animations[players[i].state].len)
-          {
-            players[i].frame = 0;
-            players[i].state = 8;//back to crouch state
-          }
-          break;
-        }
-        case 14: //stand guard
-        {
-          players[i].frame++;
-          if (players[i].frame >= players[i].animations[players[i].state].len)
-          {
-            players[i].frame = 0;
-            players[i].state = 0;//back to idle state
-          }
-          break;
-        }
-        case 8: // crouch
-        case 0: // Idle
-        case 2: // Forward
-        case 3: // Backward
-        {
-          players[i].frame++;
-          if (players[i].frame >= players[i].animations[players[i].state].len)
-            players[i].frame = 0;
+        players[i].frame = 0;
+        players[i].state = 8; // back to crouch state
+      }
+      break;
+    }
+    case 14: // stand guard
+    {
+      players[i].frame++;
+      if (players[i].frame >= players[i].animations[players[i].state].len)
+      {
+        players[i].frame = 0;
+        players[i].state = 0; // back to idle state
+      }
+      break;
+    }
 
-          //start falling if above ground && feet not on the other player
-          if(players[i].y<GROUND_LEVEL&&!isOverlapping(2,players[!i].body,i))
-          {
-            players[i].state=6;
-            players[i].frame=0;
-            break;
-          }
+    case 8: // crouch
+    case 0: // Idle
+    case 2: // Forward
+    case 3: // Backward
+    {
+      players[i].frame++;
+      if (players[i].frame >= players[i].animations[players[i].state].len)
+        players[i].frame = 0;
 
-          tracked_key = getKey(i == 0);
-          handle_input(tracked_key, i); // get keypresses
-          break;
-        }
-        case 1: // stand attack
-        {
-          players[i].frame++;
-          if (players[i].frame >= players[i].animations[1].len)
-            players[i].frame = 0;
+      // start falling if above ground && feet not on the other player
+      if (players[i].y < GROUND_LEVEL && !isOverlapping(2, players[!i].body, i))
+      {
+        players[i].state = 6;
+        players[i].frame = 0;
+        break;
+      }
 
-          // check if attack active
-          if (players[i].frame == active_frames[players[i].state])
-          {
-            if (isOverlapping(1, players[!i].body, i))
-            {
-              //check back block 
-              if(players[!i].shield>0 && players[!i].state == 3)
-              {
-                players[!i].shield--;
-                if(players[i].shield<3)
-                  players[i].shield++;
-                eraseShields(!i==0);
-                players[!i].state = 14; // stand guard
-                players[!i].frame = 0;
-              }
-              else
-              {
-                players[!i].frame = 0;
-                players[!i].state = 4; // hurt state
-                players[!i].hp -= 20;  // hurt state
-                eraseHP(!i==0);
-              }
-            }
-          }
+      tracked_key = getKey(i == 0);
+      handle_input(tracked_key, i); // get keypresses
+      break;
+    }
+    case 1: // stand attack
+    {
+      players[i].frame++;
+      if (players[i].frame >= players[i].animations[1].len)
+        players[i].frame = 0;
 
-          if (players[i].frame == 0)
-            players[i].state = 0; // back to idle state
-          break;
-        }
-        case 9: // crouch attack
+      // check if attack active
+      if (players[i].frame == active_frames[players[i].state])
+      {
+        if (isOverlapping(1, players[!i].body, i))
         {
-          players[i].frame++;
-          if (players[i].frame >= players[i].animations[9].len)
+          // check back block
+          if (players[!i].shield > 0 && players[!i].state == 3)
           {
-            players[i].frame = 0;
-            players[i].state = 8; //back to crouch
+            players[!i].shield--;
+            if (players[i].shield < 3)
+              players[i].shield++;
+            eraseShields(!i == 0);
+            players[!i].state = 14; // stand guard
+            players[!i].frame = 0;
           }
-          // check if attack active
-          if (players[i].frame == 2)
-          {
-            if (isOverlapping(6, players[!i].body, i)) 
-            {
-              //check crouch block 
-              if(players[!i].shield>0 && players[!i].state == 8)
-              {
-                players[!i].shield--;
-                if(players[i].shield<3)
-                  players[i].shield++;
-                eraseShields(!i==0);
-                players[!i].state = 12; // crouch guard
-                players[!i].frame = 0;
-              }
-              else
-              {
-                players[!i].frame = 0;
-                players[!i].state = 4; // hurt state
-                players[!i].hp -= 20;  // hurt state
-                eraseHP(!i==0);
-              }
-            }
-          }
-          break;
-        }
-        case 10: // upward attack
-        {
-          players[i].frame++;
-          if (players[i].frame >= players[i].animations[10].len)
-          {
-            players[i].frame = 0;
-            players[i].state = 0; //back to idle
-          }
-          // check if attack active
-          if (players[i].frame == 3)
-          {
-            if (isOverlapping(7, players[!i].body, i))
-            {
-              players[!i].frame = 0;
-              players[!i].state = 4; // hurt state
-              players[!i].hp -= 20;  // hurt state
-              eraseHP(!i==0);
-            }
-          }
-          break;
-        }
-        case 4: // hurt state
-        {
-          if(players[i].hp<=0)
-          {
-            players[i].frame=0;
-            players[i].state=11;// dead state
-            break;
-          }
-
-          players[i].frame++;
-          if (players[i].frame >= players[i].animations[4].len)
-          {
-            players[i].frame = 0;
-            players[i].state = 0; // back to idle state
-          }
-          break;
-        }
-        case 5: // jump state
-        {
-          players[i].frame++;
-          if(players[i].frame > 1)
-          {
-            bool overlap_before=isOverlapping(3,players[!i].body,i);//this.head vs. other.body
-            players[i].y -= 40;
-            bool overlap_after=isOverlapping(3,players[!i].body,i);//this.head vs. other.body
-            
-            if(!overlap_before&&overlap_after)
-              players[i].y=players[!i].y+hitboxes[0].h;
-            handle_input_floating(i);
-          }
-          if (players[i].frame >= players[i].animations[5].len)
-          {
-            players[i].frame = 0;
-            players[i].state = 6; // fall state
-          }
-          break;
-        }
-        case 6: //fall state
-        {
-          players[i].y+=40;
-          if(isOverlapping(2,players[!i].body,i)&&players[i].y<players[!i].y) //this.feet overlaps other.body && above other.feet
-          {
-            players[i].y=players[!i].y-hitboxes[players[!i].body].h;
-            players[i].frame=0;
-            players[i].state=7; // land state
-            break;
-          }  
-          else if(players[i].y>=GROUND_LEVEL) //this.feet vs. ground
-          {
-            players[i].y=GROUND_LEVEL;
-            players[i].frame=0;
-            players[i].state=7; // land state
-            break;
-          }
-          handle_input_floating(i);
-          break;
-        }
-        case 7: //land state
-        {
-          players[i].frame++;
-          if(players[i].frame==2)
-          {
-            if (isOverlapping(4, players[!i].body, i))
-            {
-              //check jump block 
-              if(players[!i].shield>0 && players[!i].state == 5)
-              {
-                players[!i].shield--;
-                if(players[i].shield<3)
-                  players[i].shield++;
-                eraseShields(!i==0);
-                players[!i].state = 6; //fall state
-                players[!i].frame = 0; //fall state
-                players[i].state = 5; //jump state
-                players[i].frame = 0; //jump state
-              }
-              else
-              {
-                players[!i].frame = 0;
-                players[!i].state = 4; // hurt state
-                players[!i].hp -= 20;  // hurt state
-                eraseHP(!i==0);
-              }
-            }
-          }
-          if (players[i].frame >= players[i].animations[7].len)
-          {
-            players[i].frame = 0;
-            players[i].state = 0; // idle state
-          }
-          break;
-        }
-        case 11: //dead state
-        {
-          if(players[i].frame+1<players[i].animations[11].len)
-            players[i].frame++;
           else
-            ui_state=3;//only transition to game over screen after playing dead animation
-          //start falling if above ground && feet not on the other player
-          if(players[i].y<GROUND_LEVEL&&!isOverlapping(2,players[!i].body,i))
           {
-            players[i].y+=40;
-            if(isOverlapping(2,players[!i].body,i)&&players[i].y<players[!i].y) //this.feet overlaps other.body && above other.feet
-            {
-              players[i].y=players[!i].y-hitboxes[players[!i].body].h;
-            }  
-            else if(players[i].y>=GROUND_LEVEL) //this.feet vs. ground
-            {
-              players[i].y=GROUND_LEVEL;
-            }
+            players[!i].frame = 0;
+            players[!i].state = 4; // hurt state
+            players[!i].hp -= 20;  // hurt state
+            eraseHP(!i == 0);
           }
-          break;
-        }
-        default:
-        {
-          break;
         }
       }
 
-      if(players[i].state!=11)// turn towards the other player if not dead
-        players[i].flip=players[i].x>players[!i].x;
+      if (players[i].frame == 0)
+        players[i].state = 0; // back to idle state
+      break;
+    }
+    case 9: // crouch attack
+    {
+      players[i].frame++;
+      if (players[i].frame >= players[i].animations[9].len)
+      {
+        players[i].frame = 0;
+        players[i].state = 8; // back to crouch
+      }
+      // check if attack active
+      if (players[i].frame == 2)
+      {
+        if (isOverlapping(6, players[!i].body, i))
+        {
+          // check crouch block
+          if (players[!i].shield > 0 && players[!i].state == 8)
+          {
+            players[!i].shield--;
+            if (players[i].shield < 3)
+              players[i].shield++;
+            eraseShields(!i == 0);
+            players[!i].state = 12; // crouch guard
+            players[!i].frame = 0;
+          }
+          else
+          {
+            players[!i].frame = 0;
+            players[!i].state = 4; // hurt state
+            players[!i].hp -= 20;  // hurt state
+            eraseHP(!i == 0);
+          }
+        }
+      }
+      break;
+    }
+    case 10: // upward attack
+    {
+      players[i].frame++;
+      if (players[i].frame >= players[i].animations[10].len)
+      {
+        players[i].frame = 0;
+        players[i].state = 0; // back to idle
+      }
+      // check if attack active
+      if (players[i].frame == 3)
+      {
+        if (isOverlapping(7, players[!i].body, i))
+        {
+          players[!i].frame = 0;
+          players[!i].state = 4; // hurt state
+          players[!i].hp -= 20;  // hurt state
+          eraseHP(!i == 0);
+        }
+      }
+      break;
+    }
+    case 4: // hurt state
+    {
+      if (players[i].hp <= 0)
+      {
+        players[i].frame = 0;
+        players[i].state = 11; // dead state
+        break;
+      }
 
-      
+      players[i].frame++;
+      if (players[i].frame >= players[i].animations[4].len)
+      {
+        players[i].frame = 0;
+        players[i].state = 0; // back to idle state
+      }
+      break;
+    }
+    case 5: // jump state
+    {
+      players[i].frame++;
+      if (players[i].frame > 1)
+      {
+        bool overlap_before = isOverlapping(3, players[!i].body, i); // this.head vs. other.body
+        players[i].y -= 40;
+        bool overlap_after = isOverlapping(3, players[!i].body, i); // this.head vs. other.body
+
+        if (!overlap_before && overlap_after)
+          players[i].y = players[!i].y + hitboxes[0].h;
+        handle_input_floating(i);
+      }
+      if (players[i].frame >= players[i].animations[5].len)
+      {
+        players[i].frame = 0;
+        players[i].state = 6; // fall state
+      }
+      break;
+    }
+    case 6: // fall state
+    {
+      players[i].y += 40;
+      if (isOverlapping(2, players[!i].body, i) && players[i].y < players[!i].y) // this.feet overlaps other.body && above other.feet
+      {
+        players[i].y = players[!i].y - hitboxes[players[!i].body].h;
+        players[i].frame = 0;
+        players[i].state = 7; // land state
+        break;
+      }
+      else if (players[i].y >= GROUND_LEVEL) // this.feet vs. ground
+      {
+        players[i].y = GROUND_LEVEL;
+        players[i].frame = 0;
+        players[i].state = 7; // land state
+        break;
+      }
+      handle_input_floating(i);
+      break;
+    }
+    case 7: // land state
+    {
+      players[i].frame++;
+      if (players[i].frame == 2)
+      {
+        if (isOverlapping(4, players[!i].body, i))
+        {
+          // check jump block
+          if (players[!i].shield > 0 && players[!i].state == 5)
+          {
+            players[!i].shield--;
+            if (players[i].shield < 3)
+              players[i].shield++;
+            eraseShields(!i == 0);
+            players[!i].state = 6; // fall state
+            players[!i].frame = 0; // fall state
+            players[i].state = 5;  // jump state
+            players[i].frame = 0;  // jump state
+          }
+          else
+          {
+            players[!i].frame = 0;
+            players[!i].state = 4; // hurt state
+            players[!i].hp -= 20;  // hurt state
+            eraseHP(!i == 0);
+          }
+        }
+      }
+      if (players[i].frame >= players[i].animations[7].len)
+      {
+        players[i].frame = 0;
+        players[i].state = 0; // idle state
+      }
+      break;
+    }
+    case 11: // dead state
+    {
+      if (players[i].frame + 1 < players[i].animations[11].len)
+        players[i].frame++;
+      else
+        ui_state = 3; // only transition to game over screen after playing dead animation
+      // start falling if above ground && feet not on the other player
+      if (players[i].y < GROUND_LEVEL && !isOverlapping(2, players[!i].body, i))
+      {
+        players[i].y += 40;
+        if (isOverlapping(2, players[!i].body, i) && players[i].y < players[!i].y) // this.feet overlaps other.body && above other.feet
+        {
+          players[i].y = players[!i].y - hitboxes[players[!i].body].h;
+        }
+        else if (players[i].y >= GROUND_LEVEL) // this.feet vs. ground
+        {
+          players[i].y = GROUND_LEVEL;
+        }
+      }
+      break;
+    }
+    default:
+    {
+      break;
+    }
     }
 
-    drawFrame(&players[0], BLACK); // player i, draw current frame
-    drawFrame(&players[1], BLACK); // player i, draw current frame
+    if (players[i].state != 11) // turn towards the other player if not dead
+      players[i].flip = players[i].x > players[!i].x;
+  }
 
-    drawSprite(P1, 13, false, players[0].x, players[0].y, BLACK);
-    drawSprite(P2, 15, false, players[1].x, players[1].y, BLACK);
-    drawSprite(P1, 13, false, 264, 228, BLACK);
-    drawSprite(P2, 15, false, 372, 228, BLACK);
+  drawFrame(&players[0], BLACK); // player i, draw current frame
+  drawFrame(&players[1], BLACK); // player i, draw current frame
 
-    drawSprite(stars2, 15, false, 320, 480, BLACK);
-    drawSprite(moon, 171, false, 320, 480, BLACK);
-    drawLooped(clouds3, 403, clouds_x, 480, BLACK);
-    drawLooped(clouds3_inside, 515, clouds_x, 480, WHITE);
-    drawSprite(roof_decoration, 39, false, 324, 480, BLACK);
-    drawSprite(roof_decoration, 39, true, 316, 480, BLACK);
+  drawSprite(P1, 13, false, players[0].x, players[0].y, BLACK);
+  drawSprite(P2, 15, false, players[1].x, players[1].y, BLACK);
+  drawSprite(P1, 13, false, 264, 228, BLACK);
+  drawSprite(P2, 15, false, 372, 228, BLACK);
 
+  drawSprite(stars2, 15, false, 320, 480, BLACK);
+  drawSprite(moon, 171, false, 320, 480, BLACK);
+  drawLooped(clouds3, 403, clouds_x, 480, BLACK);
+  drawLooped(clouds3_inside, 515, clouds_x, 480, WHITE);
+  drawSprite(roof_decoration, 39, false, 324, 480, BLACK);
+  drawSprite(roof_decoration, 39, true, 316, 480, BLACK);
 }
 // Animation on core 0
 static PT_THREAD(protothread_anim(struct pt *pt))
@@ -991,45 +1000,55 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   static int begin_time;
   static int spare_time;
 
-
-  
-
   while (1)
   {
     // Measure time at start of thread
     begin_time = time_us_32();
 
-    switch(ui_state)
+    switch (ui_state)
     {
-      case 0:
-        drawTitleScreen();
-        ui_state=1;
-      case 1:
-        tracked_key = getKey(false);
-        if(tracked_key>=0 && tracked_key == getKey(true)) //both players must be pressing the same key
-        {
-          ui_state=2;
-          // draw background at the start (initialize)
-          fillRect(0,0,640,480,WHITE);
-          drawSprite(rooftop, 741, false, 322, 480, BLACK);
-          drawSprite(rooftop, 741, true, 318, 480, BLACK);
-        }
-        break;
-      case 2:
-        game_step(); // game step
-        break;
-      
-      case 3:
-        drawWinScreen();
-        tracked_key = getKey(false);
-        if(tracked_key>=0 && tracked_key == getKey(true)) //both players must be pressing the same key
-        {
-          ui_state=0;
-          resetGame();
-        }
-        break;
-      default:
-        break;
+    case 0:
+      drawTitleScreen();
+      ui_state = 1;
+    case 1:
+      tracked_key = getKey(false);
+      if (tracked_key >= 0 && tracked_key == getKey(true)) // both players must be pressing the same key
+      {
+        ui_state = 2;
+        // draw background at the start (initialize)
+        fillRect(0, 0, 640, 480, WHITE);
+        drawSprite(rooftop, 741, false, 322, 480, BLACK);
+        drawSprite(rooftop, 741, true, 318, 480, BLACK);
+      }
+      break;
+    case 2:
+      game_step(); // game step
+      break;
+
+    case 3:
+      drawWinScreen();
+      tracked_key = getKey(false);
+      if (tracked_key >= 0 && tracked_key == getKey(true)) // both players must be pressing the same key
+      {
+        ui_state = 0;
+        resetGame();
+      }
+      break;
+
+    case 4:
+      drawPauseScreen();
+      tracked_key = getKey(false);
+      if (tracked_key >= 0 && tracked_key == getKey(true)) // both players must be pressing the same key
+      {
+        ui_state = 2;
+        fillRect(0, 0, 640, 480, WHITE);
+        drawSprite(rooftop, 741, false, 322, 480, BLACK);
+        drawSprite(rooftop, 741, true, 318, 480, BLACK);
+      }
+      break;
+
+    default:
+      break;
     }
 
     // delay in accordance with frame rate
@@ -1064,7 +1083,7 @@ static PT_THREAD(protothread_core1(struct pt *pt))
     // Measure time at start of thread
     begin_time = time_us_32();
 
-    if(ui_state==2)
+    if (ui_state == 2)
     {
       drawHealthBars();
       drawShields();
