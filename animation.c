@@ -1014,7 +1014,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   short p1_key_prev = -1;
   short p2_key_prev = -1;
 
-  static int ready_countdown = 0;
 
   while (1)
   {
@@ -1031,9 +1030,9 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       ui_state = -1;
       break;
     }
-    case -1: //draw ready screen
+    case -1: //wait to draw ready screen
     {
-      if(getKey(true)>0 || getKey(false)>0)
+      if(getKey(true)>0 || getKey(false)>0) //press any key to enter ready screen
       {
         fillRect(0,0,SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
         drawSprite(ready_screen, 7098, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
@@ -1041,7 +1040,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       }
       break;
     }
-    case -2: //display player keys
+    case -2: //in ready screen, display the keys being pressed
     {
       short p1_offset = 72;
       if(p1_key_prev>0)
@@ -1060,14 +1059,12 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       p1_key_prev = p1_key;
       p2_key_prev = p2_key;
 
-      if(p1_key>0 && p1_key==p2_key)
+      if(p1_key>0 && p1_key==p2_key) //start game when two players are pressing the same key
       {
         ui_state = 2;
-        // draw background at the start (initialize)
         fillRect(0, 0, 640, 480, WHITE);
         drawSprite(rooftop, 741, false, 322, 480, BLACK);
         drawSprite(rooftop, 741, true, 318, 480, BLACK);
-        // ready_countdown = time_us_32();
       }
       break;
     }
@@ -1265,7 +1262,7 @@ int main()
       ctrl_chan2,                        // Channel to be configured
       &c4,                               // The configuration we just created
       &dma_hw->ch[data_chan2].read_addr, // Write address (data channel read address)
-      &whoosh_sound,                     // Read address (POINTER TO AN ADDRESS)
+      &DAC_data,                     // Read address (POINTER TO AN ADDRESS)
       1,                                // Number of transfers
       false                             // Don't start immediately
   );
@@ -1287,8 +1284,8 @@ int main()
       data_chan2,                 // Channel to be configured
       &c3,                       // The configuration we just created
       &spi_get_hw(SPI_PORT)->dr, // write address (SPI data register)
-      whoosh_sound,                  // The initial read address
-      whoosh_sound_length,           // Number of transfers
+      DAC_data,                  // The initial read address
+      sine_table_size,           // Number of transfers
       false                      // Don't start immediately.
   );
 
