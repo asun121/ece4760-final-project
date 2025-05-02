@@ -42,6 +42,7 @@
 #include "hardware/adc.h"
 #include "hardware/sync.h"
 #include "sprites.h"
+#include "whoosh_sound.h"
 
 // Include protothreads
 #include "pt_cornell_rp2040_v1_3.h"
@@ -75,6 +76,9 @@ const uint32_t transfer_count = sine_table_size;
 
 int data_chan = 0;
 int ctrl_chan = 0;
+
+int data_chan2 = 2;
+int ctrl_chan2 = 1;
 
 //====================================================
 // === the fixed point macros ========================================
@@ -328,16 +332,6 @@ short clouds_x = 320;
 #define NUM_PLAYERS 2
 player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0, 3}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 200, A, 0, 3}};
 
-void drawTitleScreen()
-{
-  fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
-  setCursor(50, SCREEN_HEIGHT / 2 + 60);
-  setTextSize(3);
-  setTextColor(WHITE);
-  writeString("Press the same key to start...");
-  // drawSprite(title_screen, 640, false, SCREEN_MIDLINE_X - 320, SCREEN_HEIGHT / 2 - 240, BLACK);
-  // drawSprite(title_screen, 640, true, SCREEN_MIDLINE_X + 320, SCREEN_HEIGHT / 2 - 240, BLACK);
-}
 
 void drawPauseScreen()
 {
@@ -473,6 +467,16 @@ void drawSprite(const short arr[][2], short arr_len, bool flip, short x, short y
 void drawFrame(player *p, char color)
 {
   drawSprite(p->animations[p->state].f[p->frame].p, p->animations[p->state].f[p->frame].len, p->flip, p->x, p->y, color);
+}
+
+void drawTitleScreen()
+{
+  fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
+  // setCursor(50, SCREEN_HEIGHT / 2 + 60);
+  // setTextSize(3);
+  // setTextColor(WHITE);
+  // writeString("Press the same key to start...");
+  drawSprite(title_screen, 7102, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
 }
 
 bool isOverlapping(short h1, short h2, short attacker)
@@ -764,6 +768,9 @@ void game_step()
     }
     case 1: // stand attack
     {
+      if(players[i].frame == 0) {
+        dma_start_channel_mask(1u << ctrl_chan2) ;
+      }
       players[i].frame++;
       if (players[i].frame >= players[i].animations[1].len)
         players[i].frame = 0;
@@ -859,6 +866,10 @@ void game_step()
         players[i].frame = 0;
         players[i].state = 11; // dead state
         break;
+      }
+
+      if(players[i].frame == 0) {
+        dma_start_channel_mask(1u << ctrl_chan) ;
       }
 
       players[i].frame++;
@@ -1000,16 +1011,66 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   static int begin_time;
   static int spare_time;
 
+  short p1_key_prev = -1;
+  short p2_key_prev = -1;
+
+  static int ready_countdown = 0;
+
   while (1)
   {
     // Measure time at start of thread
     begin_time = time_us_32();
 
+
+
     switch (ui_state)
     {
-    case 0:
+    case 0://draw title screen
+    {
       drawTitleScreen();
-      ui_state = 1;
+      ui_state = -1;
+      break;
+    }
+    case -1: //draw ready screen
+    {
+      if(getKey(true)>0 || getKey(false)>0)
+      {
+        fillRect(0,0,SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
+        drawSprite(ready_screen, 7098, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+        ui_state = -2; 
+      }
+      break;
+    }
+    case -2: //display player keys
+    {
+      short p1_offset = 72;
+      if(p1_key_prev>0)
+        drawSprite(key_sprites[p1_key_prev-1].p, key_sprites[p1_key_prev-1].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, BLACK);
+      if(p2_key_prev>0)
+        drawSprite(key_sprites[p2_key_prev-1].p, key_sprites[p2_key_prev-1].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
+        
+      short p1_key = getKey(true);
+      short p2_key = getKey(false);
+
+      if(p1_key>0)
+        drawSprite(key_sprites[p1_key-1].p, key_sprites[p1_key-1].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
+      if(p2_key>0)
+        drawSprite(key_sprites[p2_key-1].p, key_sprites[p2_key-1].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      
+      p1_key_prev = p1_key;
+      p2_key_prev = p2_key;
+
+      if(p1_key>0 && p1_key==p2_key)
+      {
+        ui_state = 2;
+        // draw background at the start (initialize)
+        fillRect(0, 0, 640, 480, WHITE);
+        drawSprite(rooftop, 741, false, 322, 480, BLACK);
+        drawSprite(rooftop, 741, true, 318, 480, BLACK);
+        // ready_countdown = time_us_32();
+      }
+      break;
+    }
     case 1:
       tracked_key = getKey(false);
       if (tracked_key >= 0 && tracked_key == getKey(true)) // both players must be pressing the same key
@@ -1151,7 +1212,10 @@ int main()
   ;
   ctrl_chan = dma_claim_unused_channel(true);
   ;
-
+  data_chan2 = dma_claim_unused_channel(true);
+  ;
+  ctrl_chan2 = dma_claim_unused_channel(true);
+  ;
   // Setup the control channel
   dma_channel_config c = dma_channel_get_default_config(ctrl_chan); // default configs
   channel_config_set_transfer_data_size(&c, DMA_SIZE_32);           // 32-bit txfers
@@ -1163,7 +1227,7 @@ int main()
       ctrl_chan,                        // Channel to be configured
       &c,                               // The configuration we just created
       &dma_hw->ch[data_chan].read_addr, // Write address (data channel read address)
-      &dac_pointer,                     // Read address (POINTER TO AN ADDRESS)
+      &DAC_data,                     // Read address (POINTER TO AN ADDRESS)
       1,                                // Number of transfers
       false                             // Don't start immediately
   );
@@ -1189,6 +1253,46 @@ int main()
       sine_table_size,           // Number of transfers
       false                      // Don't start immediately.
   );
+
+  // Setup the control channel
+  dma_channel_config c4 = dma_channel_get_default_config(ctrl_chan2); // default configs
+  channel_config_set_transfer_data_size(&c4, DMA_SIZE_32);           // 32-bit txfers
+  channel_config_set_read_increment(&c4, false);                     // no read incrementing
+  channel_config_set_write_increment(&c4, false);                    // no write incrementing
+  channel_config_set_chain_to(&c4, data_chan2);                       // chain to data channel
+
+  dma_channel_configure(
+      ctrl_chan2,                        // Channel to be configured
+      &c4,                               // The configuration we just created
+      &dma_hw->ch[data_chan2].read_addr, // Write address (data channel read address)
+      &whoosh_sound,                     // Read address (POINTER TO AN ADDRESS)
+      1,                                // Number of transfers
+      false                             // Don't start immediately
+  );
+
+  // whoosh channel
+  dma_channel_config c3 = dma_channel_get_default_config(data_chan2); // Default configs
+  channel_config_set_transfer_data_size(&c3, DMA_SIZE_16);           // 16-bit txfers
+  channel_config_set_read_increment(&c3, true);                      // yes read incrementing
+  channel_config_set_write_increment(&c3, false);                    // no write incrementing
+  // (X/Y)*sys_clk, where X is the first 16 bytes and Y is the second
+  // sys_clk is 125 MHz unless changed in code. Configured to ~44 kHz
+  dma_timer_set_fraction(0, 0x0017, 0xffff);
+  // 0x3b means timer0 (see SDK manual)
+  channel_config_set_dreq(&c3, 0x3b); // DREQ paced by timer 0
+  // chain to the controller DMA channel
+  // channel_config_set_chain_to(&c2, ctrl_chan);                        // Chain to control channel
+
+  dma_channel_configure(
+      data_chan2,                 // Channel to be configured
+      &c3,                       // The configuration we just created
+      &spi_get_hw(SPI_PORT)->dr, // write address (SPI data register)
+      whoosh_sound,                  // The initial read address
+      whoosh_sound_length,           // Number of transfers
+      false                      // Don't start immediately.
+  );
+
+
 
   // dma_start_channel_mask(1u << ctrl_chan) ;
 
@@ -1233,51 +1337,51 @@ int main()
 
   //////////////// SOUND ////////////////
   // Initialize SPI channel (channel, baud rate set to 20MHz)
-  spi_init(SPI_PORT, 20000000);
-  // Format (channel, data bits per transfer, polarity, phase, order)
-  spi_set_format(SPI_PORT, 16, 0, 0, 0);
+  // spi_init(SPI_PORT, 20000000);
+  // // Format (channel, data bits per transfer, polarity, phase, order)
+  // spi_set_format(SPI_PORT, 16, 0, 0, 0);
 
-  // Map SPI signals to GPIO ports
-  gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-  gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
-  gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-  gpio_set_function(PIN_CS, GPIO_FUNC_SPI);
+  // // Map SPI signals to GPIO ports
+  // gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
+  // gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
+  // gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
+  // gpio_set_function(PIN_CS, GPIO_FUNC_SPI);
 
-  // Map LDAC pin to GPIO port, hold it low (could alternatively tie to GND)
-  gpio_init(LDAC);
-  gpio_set_dir(LDAC, GPIO_OUT);
-  gpio_put(LDAC, 0);
+  // // Map LDAC pin to GPIO port, hold it low (could alternatively tie to GND)
+  // gpio_init(LDAC);
+  // gpio_set_dir(LDAC, GPIO_OUT);
+  // gpio_put(LDAC, 0);
 
-  // Setup the ISR-timing GPIO
-  gpio_init(ISR_GPIO);
-  gpio_set_dir(ISR_GPIO, GPIO_OUT);
-  gpio_put(ISR_GPIO, 0);
+  // // Setup the ISR-timing GPIO
+  // gpio_init(ISR_GPIO);
+  // gpio_set_dir(ISR_GPIO, GPIO_OUT);
+  // gpio_put(ISR_GPIO, 0);
 
-  // Map LED to GPIO port, make it low
-  gpio_init(LED);
-  gpio_set_dir(LED, GPIO_OUT);
-  gpio_put(LED, 0);
+  // // Map LED to GPIO port, make it low
+  // gpio_init(LED);
+  // gpio_set_dir(LED, GPIO_OUT);
+  // gpio_put(LED, 0);
 
-  // set up increments for calculating bow envelope
-  attack_inc = divfix(max_amplitude, int2fix15(ATTACK_TIME));
-  decay_inc = divfix(max_amplitude, int2fix15(DECAY_TIME));
+  // // set up increments for calculating bow envelope
+  // attack_inc = divfix(max_amplitude, int2fix15(ATTACK_TIME));
+  // decay_inc = divfix(max_amplitude, int2fix15(DECAY_TIME));
 
-  // Build the sine lookup table
-  // scaled to produce values between 0 and 4096 (for 12-bit DAC)
-  int ii;
-  for (ii = 0; ii < sine_table_size; ii++)
-  {
-    sin_table[ii] = float2fix15(2047 * sin((float)ii * 6.283 / (float)sine_table_size));
-  }
+  // // Build the sine lookup table
+  // // scaled to produce values between 0 and 4096 (for 12-bit DAC)
+  // int ii;
+  // for (ii = 0; ii < sine_table_size; ii++)
+  // {
+  //   sin_table[ii] = float2fix15(2047 * sin((float)ii * 6.283 / (float)sine_table_size));
+  // }
 
-  // Enable the interrupt for the alarm (we're using Alarm 0)
-  hw_set_bits(&timer_hw->inte, 1u << ALARM_NUM);
-  // Associate an interrupt handler with the ALARM_IRQ
-  irq_set_exclusive_handler(ALARM_IRQ, alarm_irq);
-  // Enable the alarm interrupt
-  irq_set_enabled(ALARM_IRQ, true);
-  // Write the lower 32 bits of the target time to the alarm register, arming it.
-  timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
+  // // Enable the interrupt for the alarm (we're using Alarm 0)
+  // hw_set_bits(&timer_hw->inte, 1u << ALARM_NUM);
+  // // Associate an interrupt handler with the ALARM_IRQ
+  // irq_set_exclusive_handler(ALARM_IRQ, alarm_irq);
+  // // Enable the alarm interrupt
+  // irq_set_enabled(ALARM_IRQ, true);
+  // // Write the lower 32 bits of the target time to the alarm register, arming it.
+  // timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
 
   // start scheduler
   pt_schedule_start;
