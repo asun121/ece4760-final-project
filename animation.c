@@ -623,17 +623,7 @@ short getKey(bool p1)
   // Otherwise, indicate invalid/non-pressed buttons
   else
     (i = -1);
-  if (p1)
-    return i;
-  switch (i)
-  {
-  case 11:
-    return 6;
-  case 0:
-    return 5;
-  default:
-    return i - 6;
-  }
+  return i;
 }
 
 void handle_input_floating(short i)
@@ -1071,23 +1061,23 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     case -2: //in ready screen, display the keys being pressed
     {
       short p1_offset = 72;
-      if(p1_key_prev>0)
-        drawSprite(key_sprites[p1_key_prev-1].p, key_sprites[p1_key_prev-1].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, BLACK);
-      if(p2_key_prev>0)
-        drawSprite(key_sprites[p2_key_prev-1].p, key_sprites[p2_key_prev-1].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
+      if(p1_key_prev>=0)
+        drawSprite(key_sprites[p1_key_prev].p, key_sprites[p1_key_prev].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, BLACK);
+      if(p2_key_prev>=0)
+        drawSprite(key_sprites[p2_key_prev].p, key_sprites[p2_key_prev].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
         
       short p1_key = getKey(true);
       short p2_key = getKey(false);
 
-      if(p1_key>0)
-        drawSprite(key_sprites[p1_key-1].p, key_sprites[p1_key-1].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
-      if(p2_key>0)
-        drawSprite(key_sprites[p2_key-1].p, key_sprites[p2_key-1].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      if(p1_key>=0)
+        drawSprite(key_sprites[p1_key].p, key_sprites[p1_key].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
+      if(p2_key>=0)
+        drawSprite(key_sprites[p2_key].p, key_sprites[p2_key].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
       
       p1_key_prev = p1_key;
       p2_key_prev = p2_key;
 
-      if(p1_key>0 && p1_key==p2_key) //start game when two players are pressing the same key
+      if(p1_key>0 && p1_key<=7 && p1_key==p2_key) //start game when two players are pressing the same key in range [1,7]
       {
         ui_state = 2;
         fillRect(0, 0, 640, 480, WHITE);
@@ -1096,17 +1086,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       }
       break;
     }
-    case 1:
-      tracked_key = getKey(false);
-      if (tracked_key >= 0 && tracked_key == getKey(true)) // both players must be pressing the same key
-      {
-        ui_state = 2;
-        // draw background at the start (initialize)
-        fillRect(0, 0, 640, 480, WHITE);
-        drawSprite(rooftop, 741, false, 322, 480, BLACK);
-        drawSprite(rooftop, 741, true, 318, 480, BLACK);
-      }
-      break;
     case 2:
       game_step(); // game step
       break;
@@ -1120,7 +1099,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
         resetGame();
       }
       break;
-
     case 4:
       drawPauseScreen();
       tracked_key = getKey(false);
