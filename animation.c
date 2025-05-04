@@ -553,9 +553,7 @@ short getKey(bool p1)
   static uint32_t keypad;
 
   // Scan the keypad!
-  short begin = p1 ? 0 : 2;
-  short end = p1 ? 2 : 4;
-  for (i = begin; i < end; i++)
+  for (i = 0; i < 4; i++)
   {
     // Set a row high
     gpio_put_masked((0xF << BASE_KEYPAD_PIN),
@@ -565,11 +563,41 @@ short getKey(bool p1)
     if (!p1)
     {
       if (gpio_get(KEYPAD2_PIN1))
-        return i == 2 ? 1 : 4;
+        switch(i)
+        {
+          case 0:
+            return 1;
+          case 1:
+            return 4;
+          case 2:
+            return 7;
+          default:
+            return 10;
+        }
       else if (gpio_get(KEYPAD2_PIN2))
-        return i == 2 ? 2 : 5;
+        switch(i)
+        {
+          case 0:
+            return 2;
+          case 1:
+            return 5;
+          case 2:
+            return 8;
+          default:
+            return 0;
+        }
       else if (gpio_get(KEYPAD2_PIN3))
-        return i == 2 ? 3 : 6;
+        switch(i)
+        {
+          case 0:
+            return 3;
+          case 1:
+            return 6;
+          case 2:
+            return 9;
+          default:
+            return 11;
+        }
     }
     keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
 
