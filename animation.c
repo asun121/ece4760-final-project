@@ -310,7 +310,8 @@ typedef struct
   short frame;
   short attack_hitbox;
   short hp;
-  Anim *animations;
+  Anim *head_anim;
+  Anim *body_anim;
 
   short body;
   short shield;
@@ -330,7 +331,7 @@ const short active_frames[] = {-1, 5, -1, -1}; // active frames for each attack
 short clouds_x = 320;
 
 #define NUM_PLAYERS 2
-player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, 0, 3}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 200, A, 0, 3}};
+player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, C2, 0, 3}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 200, A, C1, 0, 3}};
 
 
 void drawPauseScreen()
@@ -351,7 +352,6 @@ void resetGame()
   players[0].frame = 0;
   players[0].attack_hitbox = 0;
   players[0].hp = 200;
-  players[0].animations = E;
   players[0].body = 0;
   players[0].shield = 3;
 
@@ -362,7 +362,6 @@ void resetGame()
   players[1].frame = 0;
   players[1].attack_hitbox = 0;
   players[1].hp = 200;
-  players[1].animations = A;
   players[1].body = 0;
   players[1].shield = 3;
 }
@@ -466,17 +465,33 @@ void drawSprite(const short arr[][2], short arr_len, bool flip, short x, short y
 
 void drawFrame(player *p, char color)
 {
-  drawSprite(p->animations[p->state].f[p->frame].p, p->animations[p->state].f[p->frame].len, p->flip, p->x, p->y, color);
+  drawSprite(p->head_anim[p->state].f[p->frame].p, p->head_anim[p->state].f[p->frame].len, p->flip, p->x, p->y, color);
+  drawSprite(p->body_anim[p->state].f[p->frame].p, p->body_anim[p->state].f[p->frame].len, p->flip, p->x, p->y, color);
 }
 
 void drawTitleScreen()
 {
   fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
-  // setCursor(50, SCREEN_HEIGHT / 2 + 60);
-  // setTextSize(3);
-  // setTextColor(WHITE);
-  // writeString("Press the same key to start...");
-  drawSprite(title_screen, 7102, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+  short outline_off = 68;
+  for(short i=0;i<2;i++)
+  {
+    if(players[i].head_anim==A)
+    {
+      drawSprite(title_A_full, 2871, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      drawSprite(title_A, 74, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      drawSprite(A_Idle_0, 119, i==1,i==0?outline_off:SCREEN_WIDTH-outline_off, SCREEN_HEIGHT, BLACK);
+    }
+    else
+    {
+      drawSprite(title_E_full, 2070, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      drawSprite(title_E, 70, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      drawSprite(E_Idle_0, 72, i==1, i==0?outline_off:SCREEN_WIDTH-outline_off, SCREEN_HEIGHT, BLACK);
+    }
+    if(players[i].body_anim==C1)
+      drawSprite(title_c1, 446, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+    else
+      drawSprite(title_c2, 407, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+  }
 }
 
 bool isOverlapping(short h1, short h2, short attacker)
@@ -745,17 +760,17 @@ void game_step()
     case 12: // crouch guard
     {
       players[i].frame++;
-      if (players[i].frame >= players[i].animations[players[i].state].len)
+      if (players[i].frame >= players[i].head_anim[players[i].state].len)
       {
         players[i].frame = 0;
         players[i].state = 8; // back to crouch state
       }
       break;
     }
-    case 14: // stand guard
+    case 13: // stand guard
     {
       players[i].frame++;
-      if (players[i].frame >= players[i].animations[players[i].state].len)
+      if (players[i].frame >= players[i].head_anim[players[i].state].len)
       {
         players[i].frame = 0;
         players[i].state = 0; // back to idle state
@@ -769,7 +784,7 @@ void game_step()
     case 3: // Backward
     {
       players[i].frame++;
-      if (players[i].frame >= players[i].animations[players[i].state].len)
+      if (players[i].frame >= players[i].head_anim[players[i].state].len)
         players[i].frame = 0;
 
       // start falling if above ground && feet not on the other player
@@ -790,7 +805,7 @@ void game_step()
         dma_start_channel_mask(1u << ctrl_chan2) ;
       }
       players[i].frame++;
-      if (players[i].frame >= players[i].animations[1].len)
+      if (players[i].frame >= players[i].head_anim[1].len)
         players[i].frame = 0;
 
       // check if attack active
@@ -805,7 +820,7 @@ void game_step()
             if (players[i].shield < 3)
               players[i].shield++;
             eraseShields(!i == 0);
-            players[!i].state = 14; // stand guard
+            players[!i].state = 13; // stand guard
             players[!i].frame = 0;
           }
           else
@@ -825,7 +840,7 @@ void game_step()
     case 9: // crouch attack
     {
       players[i].frame++;
-      if (players[i].frame >= players[i].animations[9].len)
+      if (players[i].frame >= players[i].head_anim[9].len)
       {
         players[i].frame = 0;
         players[i].state = 8; // back to crouch
@@ -859,7 +874,7 @@ void game_step()
     case 10: // upward attack
     {
       players[i].frame++;
-      if (players[i].frame >= players[i].animations[10].len)
+      if (players[i].frame >= players[i].head_anim[10].len)
       {
         players[i].frame = 0;
         players[i].state = 0; // back to idle
@@ -891,7 +906,7 @@ void game_step()
       }
 
       players[i].frame++;
-      if (players[i].frame >= players[i].animations[4].len)
+      if (players[i].frame >= players[i].head_anim[4].len)
       {
         players[i].frame = 0;
         players[i].state = 0; // back to idle state
@@ -911,7 +926,7 @@ void game_step()
           players[i].y = players[!i].y + hitboxes[0].h;
         handle_input_floating(i);
       }
-      if (players[i].frame >= players[i].animations[5].len)
+      if (players[i].frame >= players[i].head_anim[5].len)
       {
         players[i].frame = 0;
         players[i].state = 6; // fall state
@@ -966,7 +981,7 @@ void game_step()
           }
         }
       }
-      if (players[i].frame >= players[i].animations[7].len)
+      if (players[i].frame >= players[i].head_anim[7].len)
       {
         players[i].frame = 0;
         players[i].state = 0; // idle state
@@ -975,7 +990,7 @@ void game_step()
     }
     case 11: // dead state
     {
-      if (players[i].frame + 1 < players[i].animations[11].len)
+      if (players[i].frame + 1 < players[i].head_anim[11].len)
         players[i].frame++;
       else
         ui_state = 3; // only transition to game over screen after playing dead animation
@@ -1045,6 +1060,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     case 0://draw title screen
     {
       drawTitleScreen();
+      drawSprite(title, 1235, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
       ui_state = -1;
       break;
     }
@@ -1052,8 +1068,8 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     {
       if(getKey(true)>0 || getKey(false)>0) //press any key to enter ready screen
       {
-        fillRect(0,0,SCREEN_WIDTH, SCREEN_HEIGHT, BLACK);
-        drawSprite(ready_screen, 7098, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+        drawTitleScreen();
+        drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
         ui_state = -2; 
       }
       break;
@@ -1070,10 +1086,71 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       short p2_key = getKey(false);
 
       if(p1_key>=0)
+      {
         drawSprite(key_sprites[p1_key].p, key_sprites[p1_key].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
+        if (p1_key!=p1_key_prev)
+          switch(p1_key)
+          {
+            case 8:
+            {
+              if(players[0].head_anim==E)
+                players[0].head_anim=A;
+              else
+                players[0].head_anim=E;
+              drawTitleScreen();
+              drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+              break;
+            }
+            case 9:
+            {
+              if(players[0].body_anim==C1)
+                players[0].body_anim=C2;
+              else
+                players[0].body_anim=C1;
+              drawTitleScreen();
+              drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+              break;
+            }
+            default:
+            {
+              break;
+            }
+          }
+      }
+        
       if(p2_key>=0)
+      {
         drawSprite(key_sprites[p2_key].p, key_sprites[p2_key].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
-      
+        if(p2_key!=p2_key_prev)
+          switch(p2_key)
+            {
+              case 8:
+              {
+                if(players[1].head_anim==E)
+                  players[1].head_anim=A;
+                else
+                  players[1].head_anim=E;
+                drawTitleScreen();
+                drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+                break;
+              }
+              case 9:
+              {
+                if(players[1].body_anim==C1)
+                  players[1].body_anim=C2;
+                else
+                  players[1].body_anim=C1;
+                drawTitleScreen();
+                drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+                break;
+              }
+              default:
+              {
+                break;
+              }
+            }
+        }
+
       p1_key_prev = p1_key;
       p2_key_prev = p2_key;
 
