@@ -120,12 +120,6 @@ unsigned int button = 0x70;
 
 short ui_state = 0;
 
-// Define background colors
-#define GRASS_COLOR GREEN
-#define DARK_GRASS DARK_GREEN
-#define DIRT_COLOR DARK_ORANGE
-#define STONE_COLOR ORANGE
-
 #define GROUND_HEIGHT 60
 #define GROUND_LEVEL 480 - GROUND_HEIGHT
 #define GROUND_LEFT 148
@@ -333,16 +327,6 @@ short clouds_x = 320;
 #define NUM_PLAYERS 2
 player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, C2, 0, 3}, {640 * 3 / 4, GROUND_LEVEL, true, 0, 0, 0, 200, A, C1, 0, 3}};
 
-
-void drawPauseScreen()
-{
-  fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
-  setCursor(50, SCREEN_HEIGHT / 2 + 60);
-  setTextSize(3);
-  setTextColor(WHITE);
-  writeString("Paused...");
-}
-
 void resetGame()
 {
   players[0].x = 640 / 4;
@@ -382,33 +366,33 @@ void drawWinScreen()
 }
 
 // Draw health bars for both players
-void drawHealthBars()
+void drawHealthBars(char color)
 {
-  fillRect(12, 20, 4, 16, BLACK);                                  // left bar
-  fillRect(224, 20, 4, 16, BLACK);                                 // right bar
-  fillRect(20 + players[0].hp, 28, 200 - players[0].hp, 4, BLACK); // empty part
-  fillRect(20, 20, players[0].hp, 16, BLACK);                      // filled part
+  fillRect(12, 20, 4, 16, color);                                  // left bar
+  fillRect(224, 20, 4, 16, color);                                 // right bar
+  fillRect(20 + players[0].hp, 28, 200 - players[0].hp, 4, color); // empty part
+  fillRect(20, 20, players[0].hp, 16, color);                      // filled part
 
-  fillRect(412, 20, 4, 16, BLACK);                             // left bar
-  fillRect(624, 20, 4, 16, BLACK);                             // right bar
-  fillRect(420, 28, 200 - players[1].hp, 4, BLACK);            // empty part
-  fillRect(620 - players[1].hp, 20, players[1].hp, 16, BLACK); // filled part
+  fillRect(412, 20, 4, 16, color);                             // left bar
+  fillRect(624, 20, 4, 16, color);                             // right bar
+  fillRect(420, 28, 200 - players[1].hp, 4, color);            // empty part
+  fillRect(620 - players[1].hp, 20, players[1].hp, 16, color); // filled part
 }
 
-void drawShields()
+void drawShields(char color)
 {
   for (short i = 0, x = 12; i < 4; i++, x += 52)
   {
-    fillRect(x, 40, 4, 8, BLACK);
-    fillRect(640 - x - 4, 40, 4, 8, BLACK);
+    fillRect(x, 40, 4, 8, color);
+    fillRect(640 - x - 4, 40, 4, 8, color);
   }
   for (short i = 0, x = 20; i < players[0].shield; i++, x += 52)
   {
-    fillRect(x, 40, 40, 8, BLACK);
+    fillRect(x, 40, 40, 8, color);
   }
   for (short i = 0, x = 580; i < players[1].shield; i++, x -= 52)
   {
-    fillRect(x, 40, 40, 8, BLACK);
+    fillRect(x, 40, 40, 8, color);
   }
 }
 
@@ -469,7 +453,7 @@ void drawFrame(player *p, char color)
   drawSprite(p->body_anim[p->state].f[p->frame].p, p->body_anim[p->state].f[p->frame].len, p->flip, p->x, p->y, color);
 }
 
-void drawTitleScreen()
+void drawTitleScreen(bool ready)
 {
   fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BLACK); // set background to black
   short outline_off = 68;
@@ -477,13 +461,13 @@ void drawTitleScreen()
   {
     if(players[i].head_anim==A)
     {
-      drawSprite(title_A_full, 2871, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      drawSprite(title_A_full, 2871, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
       drawSprite(title_A, 74, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
       drawSprite(A_Idle_0, 119, i==1,i==0?outline_off:SCREEN_WIDTH-outline_off, SCREEN_HEIGHT, BLACK);
     }
     else
     {
-      drawSprite(title_E_full, 2070, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      drawSprite(title_E_full, 2070, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
       drawSprite(title_E, 70, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
       drawSprite(E_Idle_0, 72, i==1, i==0?outline_off:SCREEN_WIDTH-outline_off, SCREEN_HEIGHT, BLACK);
     }
@@ -492,6 +476,20 @@ void drawTitleScreen()
     else
       drawSprite(title_c2, 407, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
   }
+  if(ready)
+    drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+  else
+  {
+    drawSprite(title, 1235, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+    drawSprite(title_vs, 93, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+  }
+}
+
+void drawPauseScreen()
+{
+  drawTitleScreen(true);
+  drawHealthBars(WHITE);
+  drawShields(WHITE);
 }
 
 bool isOverlapping(short h1, short h2, short attacker)
@@ -715,12 +713,9 @@ void handle_input(short tracked_key, short i)
     players[i].frame = 0;
     break;
   }
-  case 7: // pause_game
+  case 7: // pause game
   {
-    if (ui_state == 2)
-    {
-      ui_state = 4;
-    }
+    ui_state = 4; //go to pause state
     break;
   }
   default:
@@ -1057,19 +1052,18 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     switch (ui_state)
     {
-    case 0://draw title screen
+    case 0://reset & draw title screen
     {
-      drawTitleScreen();
-      drawSprite(title, 1235, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      resetGame();
+      drawTitleScreen(false);
       ui_state = -1;
       break;
     }
     case -1: //wait to draw ready screen
     {
-      if(getKey(true)>0 || getKey(false)>0) //press any key to enter ready screen
+      if(getKey(true)>0 || getKey(false)>0) //press any key (except ESC) to enter ready screen
       {
-        drawTitleScreen();
-        drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+        drawTitleScreen(true);
         ui_state = -2; 
       }
       break;
@@ -1097,8 +1091,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
                 players[0].head_anim=A;
               else
                 players[0].head_anim=E;
-              drawTitleScreen();
-              drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+              drawTitleScreen(true);
               break;
             }
             case 9:
@@ -1107,8 +1100,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
                 players[0].body_anim=C2;
               else
                 players[0].body_anim=C1;
-              drawTitleScreen();
-              drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+              drawTitleScreen(true);
               break;
             }
             default:
@@ -1130,8 +1122,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
                   players[1].head_anim=A;
                 else
                   players[1].head_anim=E;
-                drawTitleScreen();
-                drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+                drawTitleScreen(true);
                 break;
               }
               case 9:
@@ -1140,8 +1131,7 @@ static PT_THREAD(protothread_anim(struct pt *pt))
                   players[1].body_anim=C2;
                 else
                   players[1].body_anim=C1;
-                drawTitleScreen();
-                drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+                drawTitleScreen(true);
                 break;
               }
               default:
@@ -1154,12 +1144,17 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       p1_key_prev = p1_key;
       p2_key_prev = p2_key;
 
-      if(p1_key>0 && p1_key<=7 && p1_key==p2_key) //start game when two players are pressing the same key in range [1,7]
+      
+      if(p1_key>0 && p1_key<7 && p1_key==p2_key) //start game when two players are pressing the same key in range [1,6]
       {
         ui_state = 2;
         fillRect(0, 0, 640, 480, WHITE);
         drawSprite(rooftop, 741, false, 322, 480, BLACK);
         drawSprite(rooftop, 741, true, 318, 480, BLACK);
+      }
+      else if(p1_key==0 && p2_key==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
+      {
+        ui_state=0;
       }
       break;
     }
@@ -1169,25 +1164,17 @@ static PT_THREAD(protothread_anim(struct pt *pt))
 
     case 3:
       drawWinScreen();
-      tracked_key = getKey(false);
-      if (tracked_key >= 0 && tracked_key == getKey(true)) // both players must be pressing the same key
+      //go back to ready screen if any player pressed ESC (key 0)
+      if (getKey(true) == 0 || getKey(false)==0) 
       {
-        ui_state = 0;
         resetGame();
+        drawTitleScreen(true);
+        ui_state = -2;
       }
       break;
     case 4:
       drawPauseScreen();
-      tracked_key = getKey(false);
-      if (tracked_key >= 0 && tracked_key == getKey(true)) // both players must be pressing the same key
-      {
-        ui_state = 2;
-        fillRect(0, 0, 640, 480, WHITE);
-        drawSprite(rooftop, 741, false, 322, 480, BLACK);
-        drawSprite(rooftop, 741, true, 318, 480, BLACK);
-      }
-      break;
-
+      ui_state = -2; //go to ready (while maintaining HP & shields)
     default:
       break;
     }
@@ -1226,8 +1213,8 @@ static PT_THREAD(protothread_core1(struct pt *pt))
 
     if (ui_state == 2)
     {
-      drawHealthBars();
-      drawShields();
+      drawHealthBars(BLACK);
+      drawShields(BLACK);
     }
 
     spare_time = FRAME_RATE - (time_us_32() - begin_time);
