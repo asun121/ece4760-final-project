@@ -174,10 +174,8 @@ fix15 current_amplitude_1 = 0;      // current amplitude (modified in ISR)
 #define BEEP_DURATION 12500 // the goal is 0.125 sec
 
 // State machine variables
-volatile unsigned int count_0 = 0;
-
-
-
+volatile unsigned int count_0 = 0; //bgm counter
+volatile unsigned int count_1 = 0; //sound effect counter
 
 
 
@@ -209,11 +207,25 @@ uint16_t DAC_data_0; // output value
 #define max_sounds 50
 
 unsigned int Theme_freq[32] = {587, 587, 622, 622, 440, 440, 0, 0, 175, 587, 247, 622, 440, 0, 0, 932, 1109, 1109, 622, 622, 440, 440, 0, 0, 1109, 587, 622, 247, 220, 0, 0, 294};
-int Theme_id = 0;
+short Theme_id = 0;
+
+unsigned int attack_freq[1] = {784}; //G5
+unsigned int hurt_freq[1] = {1175}; //D6
+unsigned int *effect_freq;
+short effect_len = 1;
+short effect_id = -1;
+
+static void trigger_effect(unsigned int *freq, short len)
+{
+  effect_freq = freq;
+  effect_len = len;
+  count_1 = 0;
+  effect_id = 0;
+}
 
 static void play_sound()
 {
-  current_frequency = Theme_freq[Theme_id];
+  current_frequency = effect_id>=0 ? effect_freq[effect_id] : Theme_freq[Theme_id];
 
   phase_incr_main_0 = current_frequency * two32_fs;
   // DDS phase and sine table lookup
@@ -243,7 +255,7 @@ static void play_sound()
   // SPI write (no spinlock b/c of SPI buffer)
   spi_write16_blocking(SPI_PORT, &DAC_data_0, 1);
 
-  // Increment the counter
+  // Increment the counters
   count_0 += 1;
 
   // note transition
@@ -258,6 +270,23 @@ static void play_sound()
       Theme_id = 0;
     }
   }
+
+  if(effect_id>=0)
+  {
+    count_1++;
+    if (count_1 >= BEEP_DURATION)
+    {
+      count_1 = 0;
+
+      effect_id++;
+
+      if (effect_id >= effect_len)
+      {
+        effect_id = -1;
+      }
+    }
+  }
+
 }
 
 // This timer ISR is called on core 0
@@ -660,6 +689,11 @@ void handle_input_floating(short i)
       players[i].x -= 20;
     break;
   }
+  case 7: // pause game
+  {
+    ui_state = 4; //go to pause state
+    break;
+  }
   default:
   {
     break;
@@ -697,12 +731,14 @@ void handle_input(short tracked_key, short i)
   }
   case 3: // upward punch
   {
+    trigger_effect(attack_freq, 1);
     players[i].frame = 0;
     players[i].state = 10;
     break;
   }
   case 1: // attack
   {
+    trigger_effect(attack_freq, 1);
     players[i].state = players[i].state == 8 ? 9 : 1; // crouch=>crouch attack, else stand attack
     players[i].frame = 0;
     break;
@@ -797,7 +833,7 @@ void game_step()
     case 1: // stand attack
     {
       if(players[i].frame == 0) {
-        dma_start_channel_mask(1u << ctrl_chan2) ;
+        // dma_start_channel_mask(1u << ctrl_chan2) ;
       }
       players[i].frame++;
       if (players[i].frame >= players[i].head_anim[1].len)
@@ -897,7 +933,8 @@ void game_step()
       }
 
       if(players[i].frame == 0) {
-        dma_start_channel_mask(1u << ctrl_chan) ;
+        // dma_start_channel_mask(1u << ctrl_chan) ;
+        trigger_effect(hurt_freq,1);
       }
 
       players[i].frame++;
@@ -1039,16 +1076,52 @@ static PT_THREAD(protothread_anim(struct pt *pt))
   static int begin_time;
   static int spare_time;
 
-  short p1_key_prev = -1;
-  short p2_key_prev = -1;
-
 
   while (1)
   {
     // Measure time at start of thread
     begin_time = time_us_32();
 
+    if (ui_state == 2)
+    {
+      drawHealthBars(BLACK);
+      drawShields(BLACK);
+    }
 
+    // delay in accordance with frame rate
+    spare_time = FRAME_RATE - (time_us_32() - begin_time);
+    if (spare_time < 0)
+    {
+      gpio_put(LED_PIN, 1);
+    }
+    else
+    {
+      gpio_put(LED_PIN, 0);
+    }
+    // yield for necessary amount of time
+    PT_YIELD_usec(spare_time);
+    // NEVER exit while
+
+  } // END WHILE(1)
+  PT_END(pt);
+} // animation thread
+
+// core 1
+static PT_THREAD(protothread_core1(struct pt *pt))
+{
+  // Mark beginning of thread
+  PT_BEGIN(pt);
+  // Variables for maintaining frame rate
+  static int begin_time;
+  static int spare_time;
+
+  short p1_key_prev = -1;
+  short p2_key_prev = -1;
+
+  while (1)
+  {
+    // Measure time at start of thread
+    begin_time = time_us_32();
 
     switch (ui_state)
     {
@@ -1177,44 +1250,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
       ui_state = -2; //go to ready (while maintaining HP & shields)
     default:
       break;
-    }
-
-    // delay in accordance with frame rate
-    spare_time = FRAME_RATE - (time_us_32() - begin_time);
-    if (spare_time < 0)
-    {
-      gpio_put(LED_PIN, 1);
-    }
-    else
-    {
-      gpio_put(LED_PIN, 0);
-    }
-    // yield for necessary amount of time
-    PT_YIELD_usec(spare_time);
-    // NEVER exit while
-
-  } // END WHILE(1)
-  PT_END(pt);
-} // animation thread
-
-// core 1
-static PT_THREAD(protothread_core1(struct pt *pt))
-{
-  // Mark beginning of thread
-  PT_BEGIN(pt);
-  // Variables for maintaining frame rate
-  static int begin_time;
-  static int spare_time;
-
-  while (1)
-  {
-    // Measure time at start of thread
-    begin_time = time_us_32();
-
-    if (ui_state == 2)
-    {
-      drawHealthBars(BLACK);
-      drawShields(BLACK);
     }
 
     spare_time = FRAME_RATE - (time_us_32() - begin_time);
@@ -1398,57 +1433,39 @@ int main()
   gpio_pull_down((KEYPAD2_PIN2));
   gpio_pull_down((KEYPAD2_PIN3));
 
-  // gpio_init();
-
-  // pt_add_thread(protothread_keypad) ;
 
   //////////////// SOUND ////////////////
-  // Initialize SPI channel (channel, baud rate set to 20MHz)
-  // spi_init(SPI_PORT, 20000000);
-  // // Format (channel, data bits per transfer, polarity, phase, order)
-  // spi_set_format(SPI_PORT, 16, 0, 0, 0);
 
-  // // Map SPI signals to GPIO ports
-  // gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-  // gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
-  // gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-  // gpio_set_function(PIN_CS, GPIO_FUNC_SPI);
+  // Map LDAC pin to GPIO port, hold it low (could alternatively tie to GND)
+  gpio_init(LDAC);
+  gpio_set_dir(LDAC, GPIO_OUT);
+  gpio_put(LDAC, 0);
 
-  // // Map LDAC pin to GPIO port, hold it low (could alternatively tie to GND)
-  // gpio_init(LDAC);
-  // gpio_set_dir(LDAC, GPIO_OUT);
-  // gpio_put(LDAC, 0);
+  // Setup the ISR-timing GPIO
+  gpio_init(ISR_GPIO);
+  gpio_set_dir(ISR_GPIO, GPIO_OUT);
+  gpio_put(ISR_GPIO, 0);
 
-  // // Setup the ISR-timing GPIO
-  // gpio_init(ISR_GPIO);
-  // gpio_set_dir(ISR_GPIO, GPIO_OUT);
-  // gpio_put(ISR_GPIO, 0);
+  // set up increments for calculating bow envelope
+  attack_inc = divfix(max_amplitude, int2fix15(ATTACK_TIME));
+  decay_inc = divfix(max_amplitude, int2fix15(DECAY_TIME));
 
-  // // Map LED to GPIO port, make it low
-  // gpio_init(LED);
-  // gpio_set_dir(LED, GPIO_OUT);
-  // gpio_put(LED, 0);
+  // Build the sine lookup table
+  // scaled to produce values between 0 and 4096 (for 12-bit DAC)
+  int ii;
+  for (ii = 0; ii < sine_table_size; ii++)
+  {
+    sin_table[ii] = float2fix15(2047 * sin((float)ii * 6.283 / (float)sine_table_size));
+  }
 
-  // // set up increments for calculating bow envelope
-  // attack_inc = divfix(max_amplitude, int2fix15(ATTACK_TIME));
-  // decay_inc = divfix(max_amplitude, int2fix15(DECAY_TIME));
-
-  // // Build the sine lookup table
-  // // scaled to produce values between 0 and 4096 (for 12-bit DAC)
-  // int ii;
-  // for (ii = 0; ii < sine_table_size; ii++)
-  // {
-  //   sin_table[ii] = float2fix15(2047 * sin((float)ii * 6.283 / (float)sine_table_size));
-  // }
-
-  // // Enable the interrupt for the alarm (we're using Alarm 0)
-  // hw_set_bits(&timer_hw->inte, 1u << ALARM_NUM);
-  // // Associate an interrupt handler with the ALARM_IRQ
-  // irq_set_exclusive_handler(ALARM_IRQ, alarm_irq);
-  // // Enable the alarm interrupt
-  // irq_set_enabled(ALARM_IRQ, true);
-  // // Write the lower 32 bits of the target time to the alarm register, arming it.
-  // timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
+  // Enable the interrupt for the alarm (we're using Alarm 0)
+  hw_set_bits(&timer_hw->inte, 1u << ALARM_NUM);
+  // Associate an interrupt handler with the ALARM_IRQ
+  irq_set_exclusive_handler(ALARM_IRQ, alarm_irq);
+  // Enable the alarm interrupt
+  irq_set_enabled(ALARM_IRQ, true);
+  // Write the lower 32 bits of the target time to the alarm register, arming it.
+  timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
 
   // start scheduler
   pt_schedule_start;
