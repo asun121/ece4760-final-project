@@ -43,6 +43,8 @@
 #include "hardware/sync.h"
 #include "sprites.h"
 #include "whoosh_sound.h"
+#include "shield_sound.h"
+#include "fight.h"
 
 // Include protothreads
 #include "pt_cornell_rp2040_v1_3.h"
@@ -59,7 +61,11 @@ int raw_sin[sine_table_size];
 unsigned short DAC_data[sine_table_size];
 
 // Pointer to the address of the DAC data table
-unsigned short *dac_pointer = &DAC_data[0];
+const unsigned short *dac_pointer = &DAC_data[0];
+
+const unsigned short *whoosh_pointer = &whoosh_sound[0];
+const unsigned short *shield_pointer = &shield_sound[0];
+const unsigned short *fight_pointer = &fight_sound[0];
 
 // A-channel, 1x, active
 #define DAC_config_chan_A 0b0011000000000000
@@ -74,11 +80,17 @@ unsigned short *dac_pointer = &DAC_data[0];
 // Number of DMA transfers per event
 const uint32_t transfer_count = sine_table_size;
 
-int data_chan = 0;
-int ctrl_chan = 0;
+int hit_chan = 0;
+int hitctrl_chan = 0;
 
-int data_chan2 = 2;
-int ctrl_chan2 = 1;
+int whoosh_chan = 0;
+int whooshctrl_chan = 0;
+
+int shield_chan = 0;
+int shieldctrl_chan = 0;
+
+int fight_chan = 0;
+int fightctrl_chan = 0;
 
 //====================================================
 // === the fixed point macros ========================================
@@ -169,9 +181,7 @@ fix15 current_amplitude_1 = 0;      // current amplitude (modified in ISR)
 #define ATTACK_TIME 250
 // #define DECAY_TIME 250
 #define DECAY_TIME 250
-// #define BEEP_DURATION 6500
-// #define BEEP_DURATION 125000
-#define BEEP_DURATION 12500 // the goal is 0.125 sec
+#define BEEP_DURATION 6500
 
 // State machine variables
 volatile unsigned int count_0 = 0; //bgm counter
@@ -209,11 +219,12 @@ uint16_t DAC_data_0; // output value
 unsigned int Theme_freq[32] = {587, 587, 622, 622, 440, 440, 0, 0, 175, 587, 247, 622, 440, 0, 0, 932, 1109, 1109, 622, 622, 440, 440, 0, 0, 1109, 587, 622, 247, 220, 0, 0, 294};
 short Theme_id = 0;
 
-unsigned int attack_freq[1] = {784}; //G5
-unsigned int hurt_freq[1] = {1175}; //D6
+unsigned int button_freq[1] = {1175}; //D6
 unsigned int *effect_freq;
 short effect_len = 1;
 short effect_id = -1;
+
+
 
 static void trigger_effect(unsigned int *freq, short len)
 {
@@ -516,9 +527,14 @@ void drawTitleScreen(bool ready)
 
 void drawPauseScreen()
 {
-  drawTitleScreen(true);
-  drawHealthBars(WHITE);
-  drawShields(WHITE);
+  // drawTitleScreen(true);
+  // drawHealthBars(WHITE);
+  // drawShields(WHITE);
+  drawSprite(paused,437,false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
+  drawSprite(key_out,48,false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
+  drawSprite(key_out,48,true,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
+  drawSprite(key_in,140,false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,WHITE);
+  drawSprite(key_in,140,true,SCREEN_MIDLINE_X,SCREEN_HEIGHT,WHITE);
 }
 
 bool isOverlapping(short h1, short h2, short attacker)
@@ -676,17 +692,17 @@ void handle_input_floating(short i)
   case 4: // left
   {
     bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
-    players[i].x -= 20;
+    players[i].x -= 10;
     if (players[i].x < GROUND_LEFT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
-      players[i].x += 20;
+      players[i].x += 10;
     break;
   }
   case 6: // right
   {
     bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
-    players[i].x += 20;
+    players[i].x += 10;
     if (players[i].x > GROUND_RIGHT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
-      players[i].x -= 20;
+      players[i].x -= 10;
     break;
   }
   case 7: // pause game
@@ -708,18 +724,18 @@ void handle_input(short tracked_key, short i)
   case 4: // left
   {
     bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
-    players[i].x -= 10;
+    players[i].x -= 15;
     if (players[i].x < GROUND_LEFT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
-      players[i].x += 10;
+      players[i].x += 15;
     players[i].state = players[i].flip ? 2 : 3;
     break;
   }
   case 6: // right
   {
     bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
-    players[i].x += 10;
+    players[i].x += 15;
     if (players[i].x > GROUND_RIGHT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
-      players[i].x -= 10;
+      players[i].x -= 15;
     players[i].state = players[i].flip ? 3 : 2;
     break;
   }
@@ -731,14 +747,14 @@ void handle_input(short tracked_key, short i)
   }
   case 3: // upward punch
   {
-    trigger_effect(attack_freq, 1);
+    dma_start_channel_mask(1u << whooshctrl_chan) ;
     players[i].frame = 0;
     players[i].state = 10;
     break;
   }
   case 1: // attack
   {
-    trigger_effect(attack_freq, 1);
+    dma_start_channel_mask(1u << whooshctrl_chan) ;
     players[i].state = players[i].state == 8 ? 9 : 1; // crouch=>crouch attack, else stand attack
     players[i].frame = 0;
     break;
@@ -833,7 +849,6 @@ void game_step()
     case 1: // stand attack
     {
       if(players[i].frame == 0) {
-        // dma_start_channel_mask(1u << ctrl_chan2) ;
       }
       players[i].frame++;
       if (players[i].frame >= players[i].head_anim[1].len)
@@ -847,6 +862,7 @@ void game_step()
           // check back block
           if (players[!i].shield > 0 && players[!i].state == 3)
           {
+            dma_start_channel_mask(1u << shieldctrl_chan) ;
             players[!i].shield--;
             if (players[i].shield < 3)
               players[i].shield++;
@@ -933,8 +949,7 @@ void game_step()
       }
 
       if(players[i].frame == 0) {
-        // dma_start_channel_mask(1u << ctrl_chan) ;
-        trigger_effect(hurt_freq,1);
+        dma_start_channel_mask(1u << hitctrl_chan) ;
       }
 
       players[i].frame++;
@@ -1123,6 +1138,8 @@ static PT_THREAD(protothread_core1(struct pt *pt))
     // Measure time at start of thread
     begin_time = time_us_32();
 
+    // printf("%d\n",ui_state);
+
     switch (ui_state)
     {
     case 0://reset & draw title screen
@@ -1156,6 +1173,8 @@ static PT_THREAD(protothread_core1(struct pt *pt))
       {
         drawSprite(key_sprites[p1_key].p, key_sprites[p1_key].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
         if (p1_key!=p1_key_prev)
+        {
+          trigger_effect(button_freq,1);
           switch(p1_key)
           {
             case 8:
@@ -1181,12 +1200,15 @@ static PT_THREAD(protothread_core1(struct pt *pt))
               break;
             }
           }
+        }
       }
         
       if(p2_key>=0)
       {
         drawSprite(key_sprites[p2_key].p, key_sprites[p2_key].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
         if(p2_key!=p2_key_prev)
+        {
+          trigger_effect(button_freq,1);
           switch(p2_key)
             {
               case 8:
@@ -1212,6 +1234,7 @@ static PT_THREAD(protothread_core1(struct pt *pt))
                 break;
               }
             }
+          }
         }
 
       p1_key_prev = p1_key;
@@ -1224,6 +1247,8 @@ static PT_THREAD(protothread_core1(struct pt *pt))
         fillRect(0, 0, 640, 480, WHITE);
         drawSprite(rooftop, 741, false, 322, 480, BLACK);
         drawSprite(rooftop, 741, true, 318, 480, BLACK);
+        dma_start_channel_mask(1u << fightctrl_chan) ;
+
       }
       else if(p1_key==0 && p2_key==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
       {
@@ -1237,8 +1262,8 @@ static PT_THREAD(protothread_core1(struct pt *pt))
 
     case 3:
       drawWinScreen();
-      //go back to ready screen if any player pressed ESC (key 0)
-      if (getKey(true) == 0 || getKey(false)==0) 
+      //go back to ready screen if any key is pressed
+      if (getKey(true)>=0 || getKey(false)>=0) 
       {
         resetGame();
         drawTitleScreen(true);
@@ -1246,8 +1271,41 @@ static PT_THREAD(protothread_core1(struct pt *pt))
       }
       break;
     case 4:
+    {
       drawPauseScreen();
-      ui_state = -2; //go to ready (while maintaining HP & shields)
+      short p1_offset = 68;
+      if(p1_key_prev>=0)
+        drawSprite(key_sprites[p1_key_prev].p, key_sprites[p1_key_prev].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
+      if(p2_key_prev>=0)
+        drawSprite(key_sprites[p2_key_prev].p, key_sprites[p2_key_prev].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+        
+      short p1_key = getKey(true);
+      short p2_key = getKey(false);
+
+      if(p1_key>=0)
+        drawSprite(key_sprites[p1_key].p, key_sprites[p1_key].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, BLACK);
+      if(p2_key>=0)
+        drawSprite(key_sprites[p2_key].p, key_sprites[p2_key].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
+
+      p1_key_prev = p1_key;
+      p2_key_prev = p2_key;
+
+      
+      if(p1_key>0 && p1_key<7 && p1_key==p2_key) //start game when two players are pressing the same key in range [1,6]
+      {
+        ui_state = 2;
+        fillRect(0, 0, 640, 480, WHITE);
+        drawSprite(rooftop, 741, false, 322, 480, BLACK);
+        drawSprite(rooftop, 741, true, 318, 480, BLACK);
+        dma_start_channel_mask(1u << fightctrl_chan) ;
+
+      }
+      else if(p1_key==0 && p2_key==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
+      {
+        ui_state=0;
+      }
+      break;
+    }
     default:
       break;
     }
@@ -1301,6 +1359,7 @@ int main()
   // Configure the LED pin as an output
   gpio_set_dir(LED_PIN, GPIO_OUT);
 
+  
   // Build sine table and DAC data table
   int i;
   for (i = 0; i < (sine_table_size); i++)
@@ -1310,32 +1369,44 @@ int main()
   }
 
   // Select DMA channels
-  data_chan = dma_claim_unused_channel(true);
+  hit_chan = dma_claim_unused_channel(true);
   ;
-  ctrl_chan = dma_claim_unused_channel(true);
+  hitctrl_chan = dma_claim_unused_channel(true);
   ;
-  data_chan2 = dma_claim_unused_channel(true);
+
+  whoosh_chan = dma_claim_unused_channel(true);
   ;
-  ctrl_chan2 = dma_claim_unused_channel(true);
+  whooshctrl_chan = dma_claim_unused_channel(true);
   ;
-  // Setup the control channel
-  dma_channel_config c = dma_channel_get_default_config(ctrl_chan); // default configs
+
+  shield_chan = dma_claim_unused_channel(true);
+  ;
+  shieldctrl_chan = dma_claim_unused_channel(true);
+  ;
+
+  fight_chan = dma_claim_unused_channel(true);
+  ;
+  fightctrl_chan = dma_claim_unused_channel(true);
+  ;
+
+  // Setup the hit channels
+  dma_channel_config c = dma_channel_get_default_config(hitctrl_chan); // default configs
   channel_config_set_transfer_data_size(&c, DMA_SIZE_32);           // 32-bit txfers
   channel_config_set_read_increment(&c, false);                     // no read incrementing
   channel_config_set_write_increment(&c, false);                    // no write incrementing
-  channel_config_set_chain_to(&c, data_chan);                       // chain to data channel
+  channel_config_set_chain_to(&c, hit_chan);                       // chain to data channel
 
   dma_channel_configure(
-      ctrl_chan,                        // Channel to be configured
+      hitctrl_chan,                        // Channel to be configured
       &c,                               // The configuration we just created
-      &dma_hw->ch[data_chan].read_addr, // Write address (data channel read address)
-      &DAC_data,                     // Read address (POINTER TO AN ADDRESS)
+      &dma_hw->ch[hit_chan].read_addr, // Write address (data channel read address)
+      &dac_pointer,                     // Read address (POINTER TO AN ADDRESS)
       1,                                // Number of transfers
       false                             // Don't start immediately
   );
 
   // Setup the data channel
-  dma_channel_config c2 = dma_channel_get_default_config(data_chan); // Default configs
+  dma_channel_config c2 = dma_channel_get_default_config(hit_chan); // Default configs
   channel_config_set_transfer_data_size(&c2, DMA_SIZE_16);           // 16-bit txfers
   channel_config_set_read_increment(&c2, true);                      // yes read incrementing
   channel_config_set_write_increment(&c2, false);                    // no write incrementing
@@ -1348,7 +1419,7 @@ int main()
   // channel_config_set_chain_to(&c2, ctrl_chan);                        // Chain to control channel
 
   dma_channel_configure(
-      data_chan,                 // Channel to be configured
+    hit_chan,                 // Channel to be configured
       &c2,                       // The configuration we just created
       &spi_get_hw(SPI_PORT)->dr, // write address (SPI data register)
       DAC_data,                  // The initial read address
@@ -1356,48 +1427,122 @@ int main()
       false                      // Don't start immediately.
   );
 
-  // Setup the control channel
-  dma_channel_config c4 = dma_channel_get_default_config(ctrl_chan2); // default configs
-  channel_config_set_transfer_data_size(&c4, DMA_SIZE_32);           // 32-bit txfers
-  channel_config_set_read_increment(&c4, false);                     // no read incrementing
-  channel_config_set_write_increment(&c4, false);                    // no write incrementing
-  channel_config_set_chain_to(&c4, data_chan2);                       // chain to data channel
+
+  // Setup the whoosh channel
+  dma_channel_config c3 = dma_channel_get_default_config(whooshctrl_chan); // default configs
+  channel_config_set_transfer_data_size(&c3, DMA_SIZE_32);           // 32-bit txfers
+  channel_config_set_read_increment(&c3, false);                     // no read incrementing
+  channel_config_set_write_increment(&c3, false);                    // no write incrementing
+  channel_config_set_chain_to(&c3, whoosh_chan);                       // chain to data channel
 
   dma_channel_configure(
-      ctrl_chan2,                        // Channel to be configured
-      &c4,                               // The configuration we just created
-      &dma_hw->ch[data_chan2].read_addr, // Write address (data channel read address)
-      &DAC_data,                     // Read address (POINTER TO AN ADDRESS)
+    whooshctrl_chan,                        // Channel to be configured
+      &c3,                               // The configuration we just created
+      &dma_hw->ch[whoosh_chan].read_addr, // Write address (data channel read address)
+      &whoosh_pointer,                     // Read address (POINTER TO AN ADDRESS)
       1,                                // Number of transfers
       false                             // Don't start immediately
   );
 
-  // whoosh channel
-  dma_channel_config c3 = dma_channel_get_default_config(data_chan2); // Default configs
-  channel_config_set_transfer_data_size(&c3, DMA_SIZE_16);           // 16-bit txfers
-  channel_config_set_read_increment(&c3, true);                      // yes read incrementing
-  channel_config_set_write_increment(&c3, false);                    // no write incrementing
+  // Setup the data channel
+  dma_channel_config c4 = dma_channel_get_default_config(whoosh_chan); // Default configs
+  channel_config_set_transfer_data_size(&c4, DMA_SIZE_16);           // 16-bit txfers
+  channel_config_set_read_increment(&c4, true);                      // yes read incrementing
+  channel_config_set_write_increment(&c4, false);                    // no write incrementing
   // (X/Y)*sys_clk, where X is the first 16 bytes and Y is the second
   // sys_clk is 125 MHz unless changed in code. Configured to ~44 kHz
   dma_timer_set_fraction(0, 0x0017, 0xffff);
   // 0x3b means timer0 (see SDK manual)
-  channel_config_set_dreq(&c3, 0x3b); // DREQ paced by timer 0
+  channel_config_set_dreq(&c4, 0x3b); // DREQ paced by timer 0
   // chain to the controller DMA channel
   // channel_config_set_chain_to(&c2, ctrl_chan);                        // Chain to control channel
 
   dma_channel_configure(
-      data_chan2,                 // Channel to be configured
-      &c3,                       // The configuration we just created
+    whoosh_chan,                 // Channel to be configured
+      &c4,                       // The configuration we just created
       &spi_get_hw(SPI_PORT)->dr, // write address (SPI data register)
-      DAC_data,                  // The initial read address
-      sine_table_size,           // Number of transfers
+      whoosh_sound,                  // The initial read address
+      whoosh_sound_length,           // Number of transfers
       false                      // Don't start immediately.
   );
 
 
 
-  // dma_start_channel_mask(1u << ctrl_chan) ;
+    // Setup the shield channel
+    dma_channel_config c5 = dma_channel_get_default_config(shieldctrl_chan); // default configs
+    channel_config_set_transfer_data_size(&c5, DMA_SIZE_32);           // 32-bit txfers
+    channel_config_set_read_increment(&c5, false);                     // no read incrementing
+    channel_config_set_write_increment(&c5, false);                    // no write incrementing
+    channel_config_set_chain_to(&c5, shield_chan);                       // chain to data channel
+  
+    dma_channel_configure(
+      shieldctrl_chan,                        // Channel to be configured
+        &c5,                               // The configuration we just created
+        &dma_hw->ch[shield_chan].read_addr, // Write address (data channel read address)
+        &shield_pointer,                     // Read address (POINTER TO AN ADDRESS)
+        1,                                // Number of transfers
+        false                             // Don't start immediately
+    );
+  
+    // Setup the data channel
+    dma_channel_config c6 = dma_channel_get_default_config(shield_chan); // Default configs
+    channel_config_set_transfer_data_size(&c6, DMA_SIZE_16);           // 16-bit txfers
+    channel_config_set_read_increment(&c6, true);                      // yes read incrementing
+    channel_config_set_write_increment(&c6, false);                    // no write incrementing
+    // (X/Y)*sys_clk, where X is the first 16 bytes and Y is the second
+    // sys_clk is 125 MHz unless changed in code. Configured to ~44 kHz
+    dma_timer_set_fraction(0, 0x0017, 0xffff);
+    // 0x3b means timer0 (see SDK manual)
+    channel_config_set_dreq(&c6, 0x3b); // DREQ paced by timer 0
+    // chain to the controller DMA channel
+    // channel_config_set_chain_to(&c2, ctrl_chan);                        // Chain to control channel
+  
+    dma_channel_configure(
+      shield_chan,                 // Channel to be configured
+        &c6,                       // The configuration we just created
+        &spi_get_hw(SPI_PORT)->dr, // write address (SPI data register)
+        shield_sound,                  // The initial read address
+        shield_sound_length,           // Number of transfers
+        false                      // Don't start immediately.
+    );
 
+    // Setup the fight channel
+    dma_channel_config c7 = dma_channel_get_default_config(fightctrl_chan); // default configs
+    channel_config_set_transfer_data_size(&c7, DMA_SIZE_32);           // 32-bit txfers
+    channel_config_set_read_increment(&c7, false);                     // no read incrementing
+    channel_config_set_write_increment(&c7, false);                    // no write incrementing
+    channel_config_set_chain_to(&c7, fight_chan);                       // chain to data channel
+  
+    dma_channel_configure(
+      fightctrl_chan,                        // Channel to be configured
+        &c7,                               // The configuration we just created
+        &dma_hw->ch[fight_chan].read_addr, // Write address (data channel read address)
+        &fight_pointer,                     // Read address (POINTER TO AN ADDRESS)
+        1,                                // Number of transfers
+        false                             // Don't start immediately
+    );
+  
+    // Setup the data channel
+    dma_channel_config c8 = dma_channel_get_default_config(fight_chan); // Default configs
+    channel_config_set_transfer_data_size(&c8, DMA_SIZE_16);           // 16-bit txfers
+    channel_config_set_read_increment(&c8, true);                      // yes read incrementing
+    channel_config_set_write_increment(&c8, false);                    // no write incrementing
+    // (X/Y)*sys_clk, where X is the first 16 bytes and Y is the second
+    // sys_clk is 125 MHz unless changed in code. Configured to ~44 kHz
+    dma_timer_set_fraction(0, 0x0017, 0xffff);
+    // 0x3b means timer0 (see SDK manual)
+    channel_config_set_dreq(&c8, 0x3b); // DREQ paced by timer 0
+    // chain to the controller DMA channel
+    // channel_config_set_chain_to(&c2, ctrl_chan);                        // Chain to control channel
+  
+    dma_channel_configure(
+      fight_chan,                 // Channel to be configured
+        &c8,                       // The configuration we just created
+        &spi_get_hw(SPI_PORT)->dr, // write address (SPI data register)
+        fight_sound,                  // The initial read address
+        fight_sound_length,           // Number of transfers
+        false                      // Don't start immediately.
+    );
   //================
 
   //============= ADC ============================
