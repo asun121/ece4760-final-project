@@ -64,6 +64,8 @@ unsigned short DAC_data[sine_table_size];
 const unsigned short *dac_pointer = &DAC_data[0];
 
 const unsigned short *whoosh_pointer = &whoosh_sound[0];
+//const unsigned short *whoosh_pointer = &shield_sound[0];
+
 const unsigned short *shield_pointer = &shield_sound[0];
 const unsigned short *fight_pointer = &fight_sound[0];
 
@@ -131,8 +133,7 @@ unsigned int scancodes[4] = {0x01, 0x02, 0x04, 0x08};
 unsigned int button = 0x70;
 
 short ui_state = 0;
-
-static int tracked_key1=-1, tracked_key2=-1;
+short winner = -1; //-1: undefined.  0: player 1.  1: player 2.
 
 #define GROUND_HEIGHT 60
 #define GROUND_LEVEL 480 - GROUND_HEIGHT
@@ -222,7 +223,7 @@ unsigned int Theme_freq[32] = {587, 587, 622, 622, 440, 440, 0, 0, 175, 587, 247
 short Theme_id = 0;
 
 unsigned int button_freq[1] = {1175}; //D6
-unsigned int placeholder_freq[8] = {0,0,0,0,0,0,0,0};
+unsigned int placeholder_freq[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 unsigned int *effect_freq;
 short effect_len = 1;
 short effect_id = -1;
@@ -311,19 +312,19 @@ static void play_sound()
 // This timer ISR is called on core 0
 static void alarm_irq(void)
 {
-  // Assert a GPIO when we enter the interrupt
-  gpio_put(ISR_GPIO, 1);
+  // // Assert a GPIO when we enter the interrupt
+  // gpio_put(ISR_GPIO, 1);
 
-  // Clear the alarm irq
-  hw_clear_bits(&timer_hw->intr, 1u << ALARM_NUM);
+  // // Clear the alarm irq
+  // hw_clear_bits(&timer_hw->intr, 1u << ALARM_NUM);
 
-  // Reset the alarm register
-  timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
+  // // Reset the alarm register
+  // timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
 
-  play_sound();
+  // play_sound();
 
-  // De-assert the GPIO when we leave the interrupt
-  gpio_put(ISR_GPIO, 0);
+  // // De-assert the GPIO when we leave the interrupt
+  // gpio_put(ISR_GPIO, 0);
 }
 
 
@@ -377,6 +378,7 @@ player players[2] = {{640 / 4, GROUND_LEVEL, false, 0, 0, 0, 200, E, C2, 0, 3}, 
 
 void resetGame()
 {
+  // winner=-1;
   players[0].x = 640 / 4;
   players[0].y = GROUND_LEVEL;
   players[0].flip = false;
@@ -398,20 +400,7 @@ void resetGame()
   players[1].shield = 3;
 }
 
-void drawWinScreen()
-{
-  setCursor(SCREEN_WIDTH / 2 - 180, SCREEN_HEIGHT / 2 - 180);
-  setTextColor(BLACK);
-  setTextSize(4);
-  if (players[0].hp <= 0)
-  {
-    writeString("PLAYER 2 WINS!");
-  }
-  else
-  {
-    writeString("PLAYER 1 WINS!");
-  }
-}
+
 
 // Draw health bars for both players
 void drawHealthBars(char color)
@@ -509,23 +498,45 @@ void drawTitleScreen(bool ready)
   {
     if(players[i].head_anim==A)
     {
-      drawSprite(title_A_full, 2871, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
+      if(winner<0)
+        drawSprite(title_A_full, 2871, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
+      else if(winner!=i)
+        drawSprite(title_A_lose, 1969, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
+      else
+        drawSprite(title_A_win, 2807, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
       drawSprite(title_A, 74, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
       drawSprite(A_Idle_0, 119, i==1,i==0?outline_off:SCREEN_WIDTH-outline_off, SCREEN_HEIGHT, BLACK);
     }
     else
     {
-      drawSprite(title_E_full, 2070, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
+      if(winner<0)
+        drawSprite(title_E_full, 2070, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
+      else if(winner!=i)
+        drawSprite(title_E_lose, 1597, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
+      else
+        drawSprite(title_E_win, 3156, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT+8, WHITE);
       drawSprite(title_E, 70, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
       drawSprite(E_Idle_0, 72, i==1, i==0?outline_off:SCREEN_WIDTH-outline_off, SCREEN_HEIGHT, BLACK);
     }
     if(players[i].body_anim==C1)
+    {
       drawSprite(title_c1, 446, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      drawSprite(C1_Idle_0, 141, i==1, i==0?outline_off:SCREEN_WIDTH-outline_off, SCREEN_HEIGHT, BLACK);
+    }
     else
+    {
       drawSprite(title_c2, 407, i==1, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      drawSprite(C2_Idle_0, 147, i==1, i==0 ? outline_off:SCREEN_WIDTH-outline_off, SCREEN_HEIGHT, BLACK);
+    }
+      
   }
   if(ready)
+  {
     drawSprite(title_ready, 1236, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+    drawSprite(title_ready_in, 428, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
+    drawSprite(key_in,140, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
+    drawSprite(key_in,140, true, SCREEN_MIDLINE_X-4, SCREEN_HEIGHT, BLACK);
+  }
   else
   {
     drawSprite(title, 1235, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
@@ -538,11 +549,11 @@ void drawPauseScreen()
   // drawTitleScreen(true);
   // drawHealthBars(WHITE);
   // drawShields(WHITE);
-  drawSprite(paused,437,false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
-  drawSprite(key_out,48,false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
-  drawSprite(key_out,48,true,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
-  drawSprite(key_in,140,false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,WHITE);
-  drawSprite(key_in,140,true,SCREEN_MIDLINE_X,SCREEN_HEIGHT,WHITE);
+  drawSprite(paused, 437, false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
+  drawSprite(key_out, 48, false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
+  drawSprite(key_out, 48, true,SCREEN_MIDLINE_X,SCREEN_HEIGHT,BLACK);
+  drawSprite(key_in, 140, false,SCREEN_MIDLINE_X,SCREEN_HEIGHT,WHITE);
+  drawSprite(key_in, 140, true,SCREEN_MIDLINE_X,SCREEN_HEIGHT,WHITE);
 }
 
 bool isOverlapping(short h1, short h2, short attacker)
@@ -613,11 +624,9 @@ bool isOverlapping(short h1, short h2, short attacker)
 }
 
 #define LED 25
-short getKey()
+short getKey(bool p1)
 {
-  static int i,i1=-1;
-  tracked_key1=-1;
-  tracked_key2=-1;
+  static int i;
   static uint32_t keypad;
 
   // Scan the keypad!
@@ -628,64 +637,56 @@ short getKey()
                     (scancodes[i] << BASE_KEYPAD_PIN));
     // Small delay required
     sleep_us(1);
-    if (tracked_key2<0)
+    if (!p1)
     {
       if (gpio_get(KEYPAD2_PIN1))
         switch(i)
         {
           case 0:
-            tracked_key2=1;
-            break;
+            return 1;
           case 1:
-            tracked_key2=4;
-            break;
+            return 4;
           case 2:
-            tracked_key2=7;
-            break;
+            return 7;
           default:
-            tracked_key2=10;
-            break;
+            return 10;
         }
       else if (gpio_get(KEYPAD2_PIN2))
         switch(i)
         {
           case 0:
-            tracked_key2=2;
-            break;
+            return 2;
           case 1:
-            tracked_key2=5;
-            break;
+            return 5;
           case 2:
-            tracked_key2=8;
-            break;
+            return 8;
           default:
-            tracked_key2=0;
-            break;
+            return 0;
         }
       else if (gpio_get(KEYPAD2_PIN3))
         switch(i)
         {
           case 0:
-            tracked_key2=3;
-            break;
+            return 3;
           case 1:
-            tracked_key2=6;
-            break;
+            return 6;
           case 2:
-            tracked_key2=9;
-            break;
+            return 9;
           default:
-            tracked_key2=11;
-            break;
+            return 11;
         }
     }
-    keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
-
-    // Break if button(s) are pressed
-    if ((keypad & button) && i1<0)
-      i1=i;
+    else
+    {
+      keypad = ((gpio_get_all() >> BASE_KEYPAD_PIN) & 0x7F);
+      // Break if button(s) are pressed
+      if (keypad & button)
+        break;
+    }
+    
   }
-  i=i1;
+  if (!p1)
+    return -1;
   // If we found a button . . .
   if (keypad & button)
   {
@@ -698,15 +699,17 @@ short getKey()
     // If we don't find one, report invalid keycode
     if (i == NUMKEYS)
       (i = -1);
-    else
-      tracked_key1=i;
   }
+  // Otherwise, indicate invalid/non-pressed buttons
+  else
+    (i = -1);
+  return i;
 }
 
 void handle_input_floating(short i)
 {
-  getKey();
-  switch (i == 0 ? tracked_key1 : tracked_key2)
+  short tracked_key = getKey(i == 0);
+  switch (tracked_key)
   {
   case 4: // left
   {
@@ -738,24 +741,24 @@ void handle_input_floating(short i)
 
 void handle_input(short i)
 {
-  getKey();
-  switch (i == 0 ? tracked_key1 : tracked_key2)
+  short tracked_key = getKey(i == 0);
+  switch (tracked_key)
   {
   case 4: // left
   {
     bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
-    players[i].x -= 15;
+    players[i].x -= 10;
     if (players[i].x < GROUND_LEFT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
-      players[i].x += 15;
+      players[i].x += 10;
     players[i].state = players[i].flip ? 2 : 3;
     break;
   }
   case 6: // right
   {
     bool overlap_before = isOverlapping(players[i].body, players[!i].body, i);
-    players[i].x += 15;
+    players[i].x += 10;
     if (players[i].x > GROUND_RIGHT || (!overlap_before && isOverlapping(players[i].body, players[!i].body, i)))
-      players[i].x -= 15;
+      players[i].x -= 10;
     players[i].state = players[i].flip ? 3 : 2;
     break;
   }
@@ -801,8 +804,9 @@ void handle_input(short i)
 void game_step()
 {
 
+  drawHealthBars(BLACK);
+  drawShields(BLACK);
   // drawRect(80, 0 ,640-160, 480, BLACK);
-
 
   players[0].body = players[0].state == 11 ? -1 : players[0].state == 8 || players[0].state == 9 ? 5
                                                                                                  : 0; // none if dead, crouch body if crouch OR crouch attack, stand body otherwise
@@ -884,7 +888,7 @@ void game_step()
           if (players[!i].shield > 0 && players[!i].state == 3)
           {
             dma_start_channel_mask(1u << shieldctrl_chan) ;
-            trigger_effect(placeholder_freq,8);
+            trigger_effect(placeholder_freq,16);
             players[!i].shield--;
             if (players[i].shield < 3)
               players[i].shield++;
@@ -926,6 +930,8 @@ void game_step()
           // check crouch block
           if (players[!i].shield > 0 && players[!i].state == 8)
           {
+            dma_start_channel_mask(1u << shieldctrl_chan) ;
+            trigger_effect(placeholder_freq,16);
             players[!i].shield--;
             if (players[i].shield < 3)
               players[i].shield++;
@@ -1128,12 +1134,6 @@ static PT_THREAD(protothread_anim(struct pt *pt))
     // Measure time at start of thread
     begin_time = time_us_32();
 
-    if (ui_state == 2)
-    {
-      drawHealthBars(BLACK);
-      drawShields(BLACK);
-    }
-
     // delay in accordance with frame rate
     spare_time = FRAME_RATE - (time_us_32() - begin_time);
     if (spare_time < 0)
@@ -1161,8 +1161,8 @@ static PT_THREAD(protothread_core1(struct pt *pt))
   static int begin_time;
   static int spare_time;
 
-  short tracked_key1_prev = -1;
-  short tracked_key2_prev = -1;
+  short p1_key_prev = -1;
+  short p2_key_prev = -1;
 
   while (1)
   {
@@ -1175,6 +1175,7 @@ static PT_THREAD(protothread_core1(struct pt *pt))
     {
     case 0://reset & draw title screen
     {
+      winner=-1; //intentionally separated from resetGame
       resetGame();
       drawTitleScreen(false);
       ui_state = -1;
@@ -1182,8 +1183,7 @@ static PT_THREAD(protothread_core1(struct pt *pt))
     }
     case -1: //wait to draw ready screen
     {
-      getKey();
-      if(tracked_key1>0 || tracked_key2>0) //press any key (except ESC) to enter ready screen
+      if(getKey(true)>0 || getKey(false)>0) //press any key (except ESC) to enter ready screen
       {
         drawTitleScreen(true);
         ui_state = -2; 
@@ -1193,24 +1193,25 @@ static PT_THREAD(protothread_core1(struct pt *pt))
     case -2: //in ready screen, display the keys being pressed
     {
       short p1_offset = 72;
-      if(tracked_key1_prev>=0)
-        drawSprite(key_sprites[tracked_key1_prev].p, key_sprites[tracked_key1_prev].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, BLACK);
-      if(tracked_key2_prev>=0)
-        drawSprite(key_sprites[tracked_key2_prev].p, key_sprites[tracked_key2_prev].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
+      if(p1_key_prev>=0)
+        drawSprite(key_sprites[p1_key_prev].p, key_sprites[p1_key_prev].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, BLACK);
+      if(p2_key_prev>=0)
+        drawSprite(key_sprites[p2_key_prev].p, key_sprites[p2_key_prev].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
         
-      getKey();
+      short p1_key = getKey(true);
+      short p2_key = getKey(false);
 
-      if(tracked_key1>=0)
+      if(p1_key>=0)
       {
-        drawSprite(key_sprites[tracked_key1].p, key_sprites[tracked_key1].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
-        if (tracked_key1!=tracked_key1_prev)
+        drawSprite(key_sprites[p1_key].p, key_sprites[p1_key].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
+        if (p1_key!=p1_key_prev)
         {
-          switch(tracked_key1)
+          trigger_effect(button_freq,1);
+          switch(p1_key)
           {
             case 8:
             {
-              dma_start_channel_mask(1u << whooshctrl_chan) ;
-              trigger_effect(placeholder_freq,4);
+              winner=-1; // reset winner after switching character
               if(players[0].head_anim==E)
                 players[0].head_anim=A;
               else
@@ -1220,8 +1221,6 @@ static PT_THREAD(protothread_core1(struct pt *pt))
             }
             case 9:
             {
-              dma_start_channel_mask(1u << whooshctrl_chan) ;
-              trigger_effect(placeholder_freq,4);
               if(players[0].body_anim==C1)
                 players[0].body_anim=C2;
               else
@@ -1231,24 +1230,23 @@ static PT_THREAD(protothread_core1(struct pt *pt))
             }
             default:
             {
-              trigger_effect(button_freq,1);
               break;
             }
           }
         }
       }
         
-      if(tracked_key2>=0)
+      if(p2_key>=0)
       {
-        drawSprite(key_sprites[tracked_key2].p, key_sprites[tracked_key2].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
-        if(tracked_key2!=tracked_key2_prev)
+        drawSprite(key_sprites[p2_key].p, key_sprites[p2_key].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+        if(p2_key!=p2_key_prev)
         {
-          switch(tracked_key2)
+          trigger_effect(button_freq,1);
+          switch(p2_key)
             {
               case 8:
               {
-                dma_start_channel_mask(1u << whooshctrl_chan) ;
-                trigger_effect(placeholder_freq,4);
+                winner=-1; // reset winner after switching character
                 if(players[1].head_anim==E)
                   players[1].head_anim=A;
                 else
@@ -1258,8 +1256,6 @@ static PT_THREAD(protothread_core1(struct pt *pt))
               }
               case 9:
               {
-                dma_start_channel_mask(1u << whooshctrl_chan) ;
-                trigger_effect(placeholder_freq,4);
                 if(players[1].body_anim==C1)
                   players[1].body_anim=C2;
                 else
@@ -1269,27 +1265,27 @@ static PT_THREAD(protothread_core1(struct pt *pt))
               }
               default:
               {
-                trigger_effect(button_freq,1);
                 break;
               }
             }
           }
         }
 
-      tracked_key1_prev = tracked_key1;
-      tracked_key2_prev = tracked_key2;
+      p1_key_prev = p1_key;
+      p2_key_prev = p2_key;
 
-      if(tracked_key1>0 && tracked_key1<7 && tracked_key1==tracked_key2) //start game when two players are pressing the same key in range [1,6]
+      
+      if(p1_key>0 && p1_key<7 && p1_key==p2_key) //start game when two players are pressing the same key in range [1,6]
       {
         ui_state = 2;
         fillRect(0, 0, 640, 480, WHITE);
         drawSprite(rooftop, 741, false, 322, 480, BLACK);
         drawSprite(rooftop, 741, true, 318, 480, BLACK);
         dma_start_channel_mask(1u << fightctrl_chan) ;
-        trigger_effect(placeholder_freq,4);
+        trigger_effect(placeholder_freq,16);
 
       }
-      else if(tracked_key1==0 && tracked_key2==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
+      else if(p1_key==0 && p2_key==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
       {
         ui_state=0;
       }
@@ -1299,48 +1295,44 @@ static PT_THREAD(protothread_core1(struct pt *pt))
       game_step(); // game step
       break;
 
-    case 3:
-      drawWinScreen();
-      //go back to ready screen if any key is pressed
-      getKey();
-      if (tracked_key1>=0 || tracked_key2>=0) 
-      {
-        resetGame();
-        drawTitleScreen(true);
-        ui_state = -2;
-      }
+    case 3: //win state
+      winner = players[0].hp<=0?1:0;
+      drawTitleScreen(true);
+      resetGame();
+      ui_state = -2; //go back to ready screen (will show winner there)
       break;
     case 4:
     {
       drawPauseScreen();
       short p1_offset = 68;
-      if(tracked_key1_prev>=0)
-        drawSprite(key_sprites[tracked_key1_prev].p, key_sprites[tracked_key1_prev].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
-      if(tracked_key2_prev>=0)
-        drawSprite(key_sprites[tracked_key2_prev].p, key_sprites[tracked_key2_prev].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
+      if(p1_key_prev>=0)
+        drawSprite(key_sprites[p1_key_prev].p, key_sprites[p1_key_prev].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, WHITE);
+      if(p2_key_prev>=0)
+        drawSprite(key_sprites[p2_key_prev].p, key_sprites[p2_key_prev].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, WHITE);
         
-      getKey();
+      short p1_key = getKey(true);
+      short p2_key = getKey(false);
 
-      if(tracked_key1>=0)
-        drawSprite(key_sprites[tracked_key1].p, key_sprites[tracked_key1].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, BLACK);
-      if(tracked_key2>=0)
-        drawSprite(key_sprites[tracked_key2].p, key_sprites[tracked_key2].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
+      if(p1_key>=0)
+        drawSprite(key_sprites[p1_key].p, key_sprites[p1_key].len, false, SCREEN_MIDLINE_X-p1_offset, SCREEN_HEIGHT, BLACK);
+      if(p2_key>=0)
+        drawSprite(key_sprites[p2_key].p, key_sprites[p2_key].len, false, SCREEN_MIDLINE_X, SCREEN_HEIGHT, BLACK);
 
-      tracked_key1_prev = tracked_key1;
-      tracked_key2_prev = tracked_key2;
+      p1_key_prev = p1_key;
+      p2_key_prev = p2_key;
 
       
-      if(tracked_key1>0 && tracked_key1<7 && tracked_key1==tracked_key2) //start game when two players are pressing the same key in range [1,6]
+      if(p1_key>0 && p1_key<7 && p1_key==p2_key) //start game when two players are pressing the same key in range [1,6]
       {
         ui_state = 2;
         fillRect(0, 0, 640, 480, WHITE);
         drawSprite(rooftop, 741, false, 322, 480, BLACK);
         drawSprite(rooftop, 741, true, 318, 480, BLACK);
         dma_start_channel_mask(1u << fightctrl_chan) ;
-        trigger_effect(placeholder_freq,4);
+        trigger_effect(placeholder_freq,16);
 
       }
-      else if(tracked_key1==0 && tracked_key2==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
+      else if(p1_key==0 && p2_key==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
       {
         ui_state=0;
       }
@@ -1501,8 +1493,8 @@ int main()
     whoosh_chan,                 // Channel to be configured
       &c4,                       // The configuration we just created
       &spi_get_hw(SPI_PORT)->dr, // write address (SPI data register)
-      whoosh_sound,                  // The initial read address
-      whoosh_sound_length,           // Number of transfers
+      shield_sound,                  // The initial read address
+      shield_sound_length,           // Number of transfers
       false                      // Don't start immediately.
   );
 
@@ -1569,7 +1561,7 @@ int main()
     channel_config_set_write_increment(&c8, false);                    // no write incrementing
     // (X/Y)*sys_clk, where X is the first 16 bytes and Y is the second
     // sys_clk is 125 MHz unless changed in code. Configured to ~44 kHz
-    dma_timer_set_fraction(0, 0x0017, 0xffff);
+    dma_timer_set_fraction(0, 0x000D, 0xffff);
     // 0x3b means timer0 (see SDK manual)
     channel_config_set_dreq(&c8, 0x3b); // DREQ paced by timer 0
     // chain to the controller DMA channel
