@@ -3317,4 +3317,4 @@ const uint16_t shield_sound[] = {
 
 
 
-const unsigned int shield_sound_length = sizeof(shield_sound);
+const unsigned int shield_sound_length = sizeof(shield_sound) / sizeof(shield_sound[0]);

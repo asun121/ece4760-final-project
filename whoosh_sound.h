@@ -2874,4 +2874,4 @@ const uint16_t whoosh_sound[] = {
   0x37DF,
 };
 
-const unsigned int whoosh_sound_length = sizeof(whoosh_sound);
+const unsigned int whoosh_sound_length = sizeof(whoosh_sound)/ sizeof(whoosh_sound[0]);

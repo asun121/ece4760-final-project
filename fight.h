@@ -7203,4 +7203,4 @@ const uint16_t fight_sound[] = {
 
 };
 
-const unsigned int fight_sound_length = sizeof(fight_sound);
+const unsigned int fight_sound_length = sizeof(fight_sound) / sizeof(fight_sound[0]);

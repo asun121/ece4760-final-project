@@ -45,6 +45,7 @@
 #include "whoosh_sound.h"
 #include "shield_sound.h"
 #include "fight.h"
+#include "hit.h"
 
 // Include protothreads
 #include "pt_cornell_rp2040_v1_3.h"
@@ -68,6 +69,8 @@ const unsigned short *whoosh_pointer = &whoosh_sound[0];
 
 const unsigned short *shield_pointer = &shield_sound[0];
 const unsigned short *fight_pointer = &fight_sound[0];
+const unsigned short *hit_pointer = &hit_sound[0];
+
 
 // A-channel, 1x, active
 #define DAC_config_chan_A 0b0011000000000000
@@ -268,11 +271,9 @@ static void play_sound()
   // Mask with DAC control bits
   DAC_data_0 = (DAC_config_chan_B | (DAC_output_0 & 0xffff));
 
-  if(effect_freq!=placeholder_freq)
-  {
+  // if(effect_freq!=placeholder_freq)
     // SPI write (no spinlock b/c of SPI buffer)
-    spi_write16_blocking(SPI_PORT, &DAC_data_0, 1);
-  }
+  spi_write16_blocking(SPI_PORT, &DAC_data_0, 1);
 
   // Increment the counters
   count_0 += 1;
@@ -312,19 +313,19 @@ static void play_sound()
 // This timer ISR is called on core 0
 static void alarm_irq(void)
 {
-  // // Assert a GPIO when we enter the interrupt
-  // gpio_put(ISR_GPIO, 1);
+  // Assert a GPIO when we enter the interrupt
+  gpio_put(ISR_GPIO, 1);
 
-  // // Clear the alarm irq
-  // hw_clear_bits(&timer_hw->intr, 1u << ALARM_NUM);
+  // Clear the alarm irq
+  hw_clear_bits(&timer_hw->intr, 1u << ALARM_NUM);
 
-  // // Reset the alarm register
-  // timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
+  // Reset the alarm register
+  timer_hw->alarm[ALARM_NUM] = timer_hw->timerawl + DELAY;
 
-  // play_sound();
+  play_sound();
 
-  // // De-assert the GPIO when we leave the interrupt
-  // gpio_put(ISR_GPIO, 0);
+  // De-assert the GPIO when we leave the interrupt
+  gpio_put(ISR_GPIO, 0);
 }
 
 
@@ -405,6 +406,10 @@ void resetGame()
 // Draw health bars for both players
 void drawHealthBars(char color)
 {
+  if (players[0].hp<0)
+    players[0].hp=0;
+  if (players[1].hp<0)
+    players[1].hp=0;
   fillRect(12, 20, 4, 16, color);                                  // left bar
   fillRect(224, 20, 4, 16, color);                                 // right bar
   fillRect(20 + players[0].hp, 28, 200 - players[0].hp, 4, color); // empty part
@@ -770,8 +775,7 @@ void handle_input(short i)
   }
   case 3: // upward punch
   {
-    dma_start_channel_mask(1u << whooshctrl_chan) ;
-    trigger_effect(placeholder_freq,4);
+    // trigger_effect(placeholder_freq,4);
     players[i].frame = 0;
     players[i].state = 10;
     break;
@@ -880,15 +884,13 @@ void game_step()
       // check if attack active
       if (players[i].frame == active_frames[players[i].state])
       {
-        dma_start_channel_mask(1u << whooshctrl_chan) ;
-        trigger_effect(placeholder_freq,4);
+        // trigger_effect(placeholder_freq,4);
         if (isOverlapping(1, players[!i].body, i))
         {
           // check back block
           if (players[!i].shield > 0 && players[!i].state == 3)
           {
             dma_start_channel_mask(1u << shieldctrl_chan) ;
-            trigger_effect(placeholder_freq,16);
             players[!i].shield--;
             if (players[i].shield < 3)
               players[i].shield++;
@@ -898,11 +900,17 @@ void game_step()
           }
           else
           {
+            dma_start_channel_mask(1u << hitctrl_chan) ;
+
             players[!i].frame = 0;
             players[!i].state = 4; // hurt state
             players[!i].hp -= 20;  // hurt state
             eraseHP(!i == 0);
           }
+        }
+        else{
+          dma_start_channel_mask(1u << whooshctrl_chan) ;
+
         }
       }
 
@@ -912,10 +920,7 @@ void game_step()
     }
     case 9: // crouch attack
     {
-      if(players[i].frame == 0) {
-        dma_start_channel_mask(1u << whooshctrl_chan) ;
-        trigger_effect(placeholder_freq,4);
-      }
+
       players[i].frame++;
       if (players[i].frame >= players[i].head_anim[9].len)
       {
@@ -931,7 +936,7 @@ void game_step()
           if (players[!i].shield > 0 && players[!i].state == 8)
           {
             dma_start_channel_mask(1u << shieldctrl_chan) ;
-            trigger_effect(placeholder_freq,16);
+            // trigger_effect(placeholder_freq,16);
             players[!i].shield--;
             if (players[i].shield < 3)
               players[i].shield++;
@@ -941,11 +946,17 @@ void game_step()
           }
           else
           {
+            dma_start_channel_mask(1u << hitctrl_chan);
+
             players[!i].frame = 0;
             players[!i].state = 4; // hurt state
-            players[!i].hp -= 20;  // hurt state
+            players[!i].hp -= 10;  // hurt state
             eraseHP(!i == 0);
           }
+        }
+        else{
+          dma_start_channel_mask(1u << whooshctrl_chan) ;
+
         }
       }
       break;
@@ -963,10 +974,15 @@ void game_step()
       {
         if (isOverlapping(7, players[!i].body, i))
         {
+          dma_start_channel_mask(1u << hitctrl_chan) ;
           players[!i].frame = 0;
           players[!i].state = 4; // hurt state
           players[!i].hp -= 20;  // hurt state
           eraseHP(!i == 0);
+        }
+        else{
+          dma_start_channel_mask(1u << whooshctrl_chan) ;
+
         }
       }
       break;
@@ -980,10 +996,6 @@ void game_step()
         break;
       }
 
-      if(players[i].frame == 0) {
-        dma_start_channel_mask(1u << hitctrl_chan) ;
-        trigger_effect(placeholder_freq,4);
-      }
 
       players[i].frame++;
       if (players[i].frame >= players[i].head_anim[4].len)
@@ -997,7 +1009,7 @@ void game_step()
     {
       if(players[i].frame == 0) {
         dma_start_channel_mask(1u << whooshctrl_chan) ;
-        trigger_effect(placeholder_freq,4);
+        // trigger_effect(placeholder_freq,4);
       }
       players[i].frame++;
       if (players[i].frame > 1)
@@ -1047,6 +1059,8 @@ void game_step()
           // check jump block
           if (players[!i].shield > 0 && players[!i].state == 5)
           {
+            dma_start_channel_mask(1u << shieldctrl_chan);
+
             players[!i].shield--;
             if (players[i].shield < 3)
               players[i].shield++;
@@ -1058,6 +1072,8 @@ void game_step()
           }
           else
           {
+            dma_start_channel_mask(1u << hitctrl_chan);
+
             players[!i].frame = 0;
             players[!i].state = 4; // hurt state
             players[!i].hp -= 20;  // hurt state
@@ -1282,7 +1298,8 @@ static PT_THREAD(protothread_core1(struct pt *pt))
         drawSprite(rooftop, 741, false, 322, 480, BLACK);
         drawSprite(rooftop, 741, true, 318, 480, BLACK);
         dma_start_channel_mask(1u << fightctrl_chan) ;
-        trigger_effect(placeholder_freq,16);
+       // dma_start_channel_mask(1u << shieldctrl_chan) ;
+        // trigger_effect(placeholder_freq,16);
 
       }
       else if(p1_key==0 && p2_key==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
@@ -1329,7 +1346,7 @@ static PT_THREAD(protothread_core1(struct pt *pt))
         drawSprite(rooftop, 741, false, 322, 480, BLACK);
         drawSprite(rooftop, 741, true, 318, 480, BLACK);
         dma_start_channel_mask(1u << fightctrl_chan) ;
-        trigger_effect(placeholder_freq,16);
+        // trigger_effect(placeholder_freq,16);
 
       }
       else if(p1_key==0 && p2_key==0) // go back to title screen (and reset game) if both players are pressing ESC (key 0)
@@ -1432,7 +1449,7 @@ int main()
       hitctrl_chan,                        // Channel to be configured
       &c,                               // The configuration we just created
       &dma_hw->ch[hit_chan].read_addr, // Write address (data channel read address)
-      &dac_pointer,                     // Read address (POINTER TO AN ADDRESS)
+      &hit_pointer,                     // Read address (POINTER TO AN ADDRESS)
       1,                                // Number of transfers
       false                             // Don't start immediately
   );
@@ -1454,8 +1471,8 @@ int main()
     hit_chan,                 // Channel to be configured
       &c2,                       // The configuration we just created
       &spi_get_hw(SPI_PORT)->dr, // write address (SPI data register)
-      DAC_data,                  // The initial read address
-      sine_table_size,           // Number of transfers
+      hit_sound,                  // The initial read address
+      hit_sound_length,           // Number of transfers
       false                      // Don't start immediately.
   );
 
@@ -1561,7 +1578,7 @@ int main()
     channel_config_set_write_increment(&c8, false);                    // no write incrementing
     // (X/Y)*sys_clk, where X is the first 16 bytes and Y is the second
     // sys_clk is 125 MHz unless changed in code. Configured to ~44 kHz
-    dma_timer_set_fraction(0, 0x000D, 0xffff);
+    dma_timer_set_fraction(0, 0x000A, 0xffff);
     // 0x3b means timer0 (see SDK manual)
     channel_config_set_dreq(&c8, 0x3b); // DREQ paced by timer 0
     // chain to the controller DMA channel
